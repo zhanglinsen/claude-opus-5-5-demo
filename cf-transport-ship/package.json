@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "dev": "node build.mjs --dev && node scripts/serve.mjs",
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:storage": "node scripts/e2e-storage-getter.mjs"
   },
   "dependencies": {
     "esbuild": "^0.28.2",

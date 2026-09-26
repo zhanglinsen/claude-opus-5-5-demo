@@ -2,7 +2,8 @@
 import * as THREE from 'three';
 import { Renderer } from './render.js';
 import { buildTextures } from './textures.js';
-import { buildMap } from './map.js';
+import { MAP_BUILDERS, getMapDescriptor, resolveMapId, inSpawnZone } from './maps/index.js';
+import { getMode } from './modes/index.js';
 import { Environment } from './env.js';
 import { World, NavGrid } from './physics.js';
 import { Effects } from './effects.js';
@@ -33,6 +34,12 @@ export class Game {
     this.hud = new HUD(this);
     this.opts = this.hud.opts;
     if (this.qs.get('q')) this.opts.quality = this.qs.get('q');
+    // 地图解析：URL map= 优先，其次已存设置；不可用的地图回退到第一张可用地图
+    const mapId = resolveMapId(this.qs.get('map'), this.opts.map);
+    this.mapDesc = getMapDescriptor(mapId);
+    this.opts.map = mapId;
+    this.hud.saveOpts();
+    this.hud.setMapInfo(this.mapDesc);
     this.hud.show('loading');
     this.hud.loading(0.05, '初始化渲染器');
     await nextFrame();
@@ -41,22 +48,23 @@ export class Game {
     this.hud.loading(0.12, '生成集装箱 / 甲板 / 船体纹理');
     await nextFrame(); await nextFrame();
     this.T = buildTextures(this.opts.quality);
-    this.hud.loading(0.55, '搭建运输船');
+    this.hud.loading(0.55, this.mapDesc.loadingLabel);
     await nextFrame();
     this.world = new World();
-    this.map = buildMap(this.renderer.scene, this.T, this.world);
+    this.map = (MAP_BUILDERS[mapId] || MAP_BUILDERS['transport-ship'])(this.renderer.scene, this.T, this.world);
     this.hud.loading(0.68, '天空与海洋');
     await nextFrame();
-    this.env = new Environment(this.renderer.renderer, this.renderer.scene, this.opts.quality);
+    this.env = new Environment(this.renderer.renderer, this.renderer.scene, this.opts.quality, this.mapDesc.env);
     this.env.extraScenes = [this.renderer.vmScene];
     this.env.apply(this.opts.tod);
     this.fx = new Effects(this.renderer.scene, this.T, this.renderer.camera);
-    this.fx.initAmbient(this.map.funnelTop);
+    this.fx.initAmbient(this.map[this.mapDesc.ambientKey] || this.map.funnelTop);
     this.vm = new ViewModel(this.renderer.vmScene, this.T, this.opts.team);
     this.hud.loading(0.8, '计算寻路网格');
     await nextFrame();
-    this.nav = new NavGrid(this.world, -36.2, -12.1, 36.2, 12.1, 0.5, 0.42);
-    this.hud.buildRadar(this.world);
+    const N = this.mapDesc.nav;
+    this.nav = new NavGrid(this.world, N.x0, N.z0, N.x1, N.z1, N.cell, N.agentR);
+    this.hud.buildRadar(this.world, this.mapDesc);
     this.hud.loading(0.88, '武器图标 / 预编译着色器');
     await nextFrame();
     this.hud.setIcons(this.makeIcons());
@@ -123,13 +131,14 @@ export class Game {
   // ================= 流程 =================
   startMatch() {
     const o = this.opts;
+    this.mode = getMode(o.mode || this.mapDesc.defaultMode);
     audio.init(); audio.setVolumes({ master: o.vol }); audio.startAmbient(); audio.playUI('start');
     for (const a of this.actors) this.renderer.scene.remove(a.soldier.root);
     for (const t of this.tags) this.renderer.scene.remove(t.sprite);
     for (const n of this.nades) this.renderer.scene.remove(n.mesh);
     this.actors = []; this.nades = []; this.tags = []; this.timers = [];
     this.score = { BL: 0, GR: 0 };
-    this.goal = o.goal; this.timeLeft = 600;
+    this.goal = o.goal; this.timeLeft = this.mode.defaults.time;
     this.env.apply(o.tod);
     const my = o.team, other = my === 'BL' ? 'GR' : 'BL';
     const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
@@ -161,7 +170,7 @@ export class Game {
     this.hud.show(null);
     this.lock();
     setTimeout(() => audio.announce('Go go go!'), 400);
-    this.hud.toast(`团队竞技 · 率先达到 <b style="color:#f5b321">${this.goal}</b> 击杀的队伍获胜`, 3.5);
+    this.hud.toast(this.mode.toast(this.goal), 3.5);
   }
   addTag(b) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 48;
@@ -176,7 +185,13 @@ export class Game {
     this.tags.push({ sprite: s, actor: b });
   }
   spawnActor(a, first) {
-    const pts = this.map.spawns[a.team];
+    let pts = this.map.spawns[a.team];
+    // 边界契约：出生点必须落在可玩区域内（数据异常时回退全部点）
+    const B = this.mapDesc.bounds;
+    if (B) {
+      const inB = pts.filter((p) => p.x >= B.x0 && p.x <= B.x1 && p.z >= B.z0 && p.z <= B.z1);
+      if (inB.length) pts = inB;
+    }
     let best = null, bestScore = -1e9;
     for (const p of pts) {
       let sc = Math.random() * 3;
@@ -247,7 +262,7 @@ export class Game {
   chooseLoadout(id) {
     const p = this.player;
     p.nextPrimary = id; this.opts.primary = id; this.hud.saveOpts();
-    const inSpawn = p.alive && (p.team === 'BL' ? p.pos.x < -28.3 : p.pos.x > 28.3);
+    const inSpawn = p.alive && inSpawnZone(this.mapDesc, p.team, p.pos);
     if (inSpawn) {
       p.primary = id; p.inv[0] = new (p.inv[0].constructor)(id); p.inv[0].patternSeed = Math.random() * 6;
       p.slot = 0; p.readyAt = this.time + WEAPONS[id].draw; p.soldier.setWeapon(id);
@@ -261,12 +276,13 @@ export class Game {
     if (k === 'fov' && this.renderer) { this.renderer.camera.fov = v; this.renderer.camera.updateProjectionMatrix(); }
     if (k === 'tod' && this.env) this.env.apply(v);
     if (k === 'quality') { this.hud.saveOpts(); location.reload(); }
+    if (k === 'map') { this.hud.saveOpts(); location.reload(); }
     if (k === 'team' && this.vm) this.vm.setTeam(v);
   }
   endMatch() {
     this.ended = true; this.playing = false;
-    const my = this.player.team, other = my === 'BL' ? 'GR' : 'BL';
-    const win = this.score[my] === this.score[other] ? null : this.score[my] > this.score[other];
+    const my = this.player.team;
+    const win = this.mode.result(this.score, my);
     this.hud.endScreen(win, this.score, this.actors, this.player.id);
     audio.playUI('roundEnd'); audio.setLowHealth(false);
     audio.announce(win ? 'Mission accomplished' : win === null ? 'Draw' : 'Mission failed');
@@ -489,7 +505,7 @@ export class Game {
     if (killed) this.kill(v, att, wid, part === 'head' && !melee, wall, dir);
   }
   kill(v, att, wid, hs, wall, dir) {
-    v.alive = false; v.hp = 0; v.deadT = 0; v.respawnT = 4.0; v.stats.d++;
+    v.alive = false; v.hp = 0; v.deadT = 0; v.respawnT = this.mode.defaults.respawn; v.stats.d++;
     v.scoped = 0;
     v.soldier.die(dir.x, dir.z, hs);
     audio.playDeath(v.soldier.chestWorld(new THREE.Vector3()));
@@ -521,7 +537,7 @@ export class Game {
       this.killedBy = att && att !== v ? `被 <span style="color:${att.team === 'BL' ? '#ff9b70' : '#8cc8ff'}">${att.name}</span> 用 ${wn}${hs ? ' <span style="color:#ff5040">爆头</span>' : ''}击杀` : '你阵亡了';
     }
     this.fx.bloodSplat(v.pos);
-    if (this.score.BL >= this.goal || this.score.GR >= this.goal) setTimeout(() => { if (this.playing) this.endMatch(); }, 1200);
+    if (this.mode.checkEnd(this.score, this.goal)) setTimeout(() => { if (this.playing) this.endMatch(); }, 1200);
   }
 
   // ================= 事件音效 =================
@@ -563,11 +579,11 @@ export class Game {
     const active = this.playing && !this.paused;
     if (active) this.simulate(dt);
     else if (!this.playing) {
-      // 菜单：环绕运输船
-      const t = this.realTime * 0.045;
-      cam.position.set(Math.cos(t) * 46 - 6, 13 + Math.sin(t * 2.1) * 3, Math.sin(t) * 34);
-      cam.lookAt(-4, 1.5, 0);
-      cam.fov = 60; cam.updateProjectionMatrix();
+      // 菜单：环绕镜头（参数来自地图描述）
+      const O = this.mapDesc.menu.orbit, t = this.realTime * O.speed;
+      cam.position.set(Math.cos(t) * O.r + O.rOff, O.y + Math.sin(t * 2.1) * O.yAmp, Math.sin(t) * O.zR);
+      cam.lookAt(O.look[0], O.look[1], O.look[2]);
+      cam.fov = O.fov; cam.updateProjectionMatrix();
     }
     this.renderFrame(dt);
   }
@@ -635,7 +651,7 @@ export class Game {
     if (this.fpsAcc > 1) {
       this.fps = Math.round(this.fpsN / this.fpsAcc); this.fpsAcc = 0; this.fpsN = 0;
       const lbl = document.querySelector('#radarWrap .lbl');
-      if (lbl) lbl.textContent = `运输船 · ${this.fps} FPS`;
+      if (lbl) lbl.textContent = `${this.mapDesc.name} · ${this.fps} FPS`;
       if (this.playing && !this.paused && this.time > 8 && !this.fpsHinted && this.fps < 32 && this.opts.quality !== 'low') {
         this.fpsHinted = true;
         this.hud.toast('帧率较低：可按 Esc 在主菜单把画质调到「均衡」或「流畅」', 5);
@@ -691,7 +707,7 @@ export class Game {
     }
     if (this.aimTarget && this.aimTarget.alive) { aimName = this.aimTarget.name; aimTeam = this.aimTarget.team; }
     this.hud.update(dt, {
-      score: this.score, timeLeft: this.timeLeft, goal: this.goal, myTeam: p.team,
+      score: this.score, timeLeft: this.timeLeft, goal: this.goal, myTeam: p.team, modeName: this.mode.name,
       hp: p.hp, armor: p.armor, alive: p.alive, weapon: w, scoped: p.scoped && w.def.type === 'sniper', spreadPx,
       yaw: p.yaw, respawnIn: p.respawnT, killedBy: this.killedBy, protect: p.protectT, aimName, aimTeam,
     });

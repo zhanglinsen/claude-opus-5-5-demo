@@ -1,0 +1,3 @@
+# 测试/构建生成物（node_modules 与 dist 由仓库根 .gitignore 覆盖）
+artifacts/
+*.log

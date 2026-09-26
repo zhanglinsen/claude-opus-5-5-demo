@@ -1,0 +1,100 @@
+{
+  "schema_version": "1.0.0",
+  "created": "2026-09-26",
+  "planning": {
+    "phase": "complete",
+    "scope_mode": "SELECTIVE",
+    "decision_ref": "User approved full plan on 2026-09-26",
+    "included_story_ids": [],
+    "excluded_story_ids": [],
+    "story_refs": {},
+    "required_spec_refs": [
+      ".ultra/specs/desert-grey.md#scope"
+    ],
+    "gaps": []
+  },
+  "tasks": [
+    {
+      "id": "1",
+      "title": "共享接口与运输船适配",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 6,
+      "status": "completed",
+      "dependencies": [],
+      "context_file": "contexts/task-1.md",
+      "trace_to": ".ultra/specs/desert-grey.md#architecture",
+      "story_ids": []
+    },
+    {
+      "id": "2",
+      "title": "沙漠灰白模、碰撞和导航",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 8,
+      "status": "in_progress",
+      "dependencies": [
+        "1"
+      ],
+      "context_file": "contexts/task-2.md",
+      "trace_to": ".ultra/specs/desert-grey.md#map",
+      "story_ids": []
+    },
+    {
+      "id": "3",
+      "title": "爆破规则、C4与目标型AI",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 8,
+      "status": "pending",
+      "dependencies": [
+        "2"
+      ],
+      "context_file": "contexts/task-3.md",
+      "trace_to": ".ultra/specs/desert-grey.md#rules",
+      "story_ids": []
+    },
+    {
+      "id": "4",
+      "title": "战斗完善、投掷物与练习模式",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 6,
+      "status": "pending",
+      "dependencies": [
+        "3"
+      ],
+      "context_file": "contexts/task-4.md",
+      "trace_to": ".ultra/specs/desert-grey.md#combat",
+      "story_ids": []
+    },
+    {
+      "id": "5",
+      "title": "画面、HUD、音效与触屏",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 6,
+      "status": "pending",
+      "dependencies": [
+        "4"
+      ],
+      "context_file": "contexts/task-5.md",
+      "trace_to": ".ultra/specs/desert-grey.md#controls",
+      "story_ids": []
+    },
+    {
+      "id": "6",
+      "title": "双地图回归与本地交付",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 6,
+      "status": "pending",
+      "dependencies": [
+        "5"
+      ],
+      "context_file": "contexts/task-6.md",
+      "trace_to": ".ultra/specs/desert-grey.md#verification",
+      "story_ids": []
+    }
+  ]
+}

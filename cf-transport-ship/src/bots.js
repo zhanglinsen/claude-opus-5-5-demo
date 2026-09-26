@@ -15,9 +15,7 @@ export const BOT_NAMES = [
   '黑名单丶影', '保卫者老王', '夜袭者', '零度丶', '狂暴战神', '别打我头', '满血复活', '疾风步',
 ];
 
-// 各阵营的架点（潜伏者坐标，保卫者取反）
-const HOLDS = [[-20.5, -7.2, 0.2], [-24.6, 5.8, -0.15], [-16.4, 1.3, 0.1], [-9.8, -6.8, 0.25], [-26.2, -6.5, 0.05]];
-const LANES = [-6.8, -0.4, 6.8];
+// 各阵营的架点 / 分路与包抄点来自地图描述（game.mapDesc.ai），坐标为潜伏者侧，保卫者取反
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
 const wrapPi = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
@@ -42,25 +40,25 @@ export class Bot extends Actor {
     this.path = null; this.goal = null; this.target = null; this.visible = false; this.lastSeen = null;
     const r = Math.random();
     this.role = this.primary === 'awm' ? 'hold' : r < 0.25 ? 'flank' : 'rush';
-    this.lane = LANES[(Math.random() * 3) | 0];
+    const lanes = this.game.mapDesc.ai.lanes;
+    this.lane = lanes[(Math.random() * lanes.length) | 0];
     this.stage = 0;
     this.pickGoal();
   }
   L(x, z) { return [x * this.side, z * this.side]; } // 己方坐标 -> 世界
   pickGoal() {
-    const g = this.game, nav = g.nav, rnd = Math.random;
+    const g = this.game, nav = g.nav, rnd = Math.random, AI = g.mapDesc.ai;
     let gx, gz;
     if (this.role === 'hold') {
-      const h = HOLDS[(rnd() * HOLDS.length) | 0];
+      const h = AI.holds[(rnd() * AI.holds.length) | 0];
       [gx, gz] = this.L(h[0], h[1]);
       this.holdYaw = this.side > 0 ? -Math.PI / 2 + h[2] : Math.PI / 2 + h[2];
     } else if (this.role === 'flank' && this.stage < 3) {
-      const pts = [[-31.5, 10.5], [-8, 10.6], [8.0, 7.8]];
-      [gx, gz] = this.L(...pts[this.stage]);
+      [gx, gz] = this.L(...AI.flank[this.stage]);
     } else if (this.stage < 1) {
-      [gx, gz] = this.L(4 + rnd() * 18, this.lane + (rnd() - 0.5) * 2);
+      [gx, gz] = this.L(AI.rushZone.x0 + rnd() * (AI.rushZone.x1 - AI.rushZone.x0), this.lane + (rnd() - 0.5) * 2);
     } else {
-      const p = nav.randomFree(rnd, -26, -8.8, 26, 8.8);
+      const p = nav.randomFree(rnd, AI.roam.x0, AI.roam.z0, AI.roam.x1, AI.roam.z1);
       [gx, gz] = p || this.L(10, 0);
     }
     this.goal = [gx, gz];

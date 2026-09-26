@@ -583,11 +583,12 @@ export function buildMap(scene, T, world, opts = {}) {
   world.build();
 
   // ================== 出生点 ==================
+  // 契约：{x, y, z, yaw}，y 为脚底站立面高度（主甲板碰撞体顶面 y=0）
   const spawns = { BL: [], GR: [] };
   for (let i = 0; i < 10; i++) {
     const zz = -6.6 + (i % 5) * 3.0, xx = -34.0 + Math.floor(i / 5) * 2.8;
-    spawns.BL.push({ x: xx, z: zz, yaw: -Math.PI / 2 });
-    spawns.GR.push({ x: -xx, z: -zz, yaw: Math.PI / 2 });
+    spawns.BL.push({ x: xx, y: 0, z: zz, yaw: -Math.PI / 2 });
+    spawns.GR.push({ x: -xx, y: 0, z: -zz, yaw: Math.PI / 2 });
   }
 
   return {

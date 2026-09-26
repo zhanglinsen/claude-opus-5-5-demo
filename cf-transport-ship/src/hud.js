@@ -1,5 +1,8 @@
 // HUD 与菜单（DOM）
 import { WEAPONS, PRIMARIES } from './weapons.js';
+import { loadOpts, saveOpts, acquireStorage } from './settings.js';
+import { MAPS } from './maps/registry.js';
+import { getMode } from './modes/index.js';
 
 const TEAM_CN = { BL: '潜伏者', GR: '保卫者' };
 const $ = (s, r = document) => r.querySelector(s);
@@ -24,19 +27,41 @@ export class HUD {
     this.slotsT = 0;
     this.radarCtx = this.el.radar.getContext('2d');
     const touch = matchMedia('(pointer:coarse)').matches;
-    this.opts = { team: 'BL', primary: 'ak47', size: 6, diff: 'normal', goal: 50, tod: 'day', quality: touch ? 'low' : 'high', sens: 1.0, fov: 78, vol: 0.8 };
-    try { Object.assign(this.opts, JSON.parse(localStorage.getItem('cf_ship_opts') || '{}')); } catch (e) { /* 忽略 */ }
+    this.opts = loadOpts(acquireStorage(), touch);
     this.buildMenu();
   }
-  saveOpts() { try { localStorage.setItem('cf_ship_opts', JSON.stringify(this.opts)); } catch (e) { /* 忽略 */ } }
+  saveOpts() { saveOpts(acquireStorage(), this.opts); }
 
   // ---------- 菜单 ----------
+  buildMapSeg() {
+    const seg = $('#mapSeg');
+    for (const id of Object.keys(MAPS)) {
+      const m = MAPS[id];
+      const b = document.createElement('button');
+      b.dataset.v = id;
+      b.innerHTML = `${m.name}<small>${m.available ? m.en : '待开放'}</small>`;
+      if (!m.available) b.disabled = true;
+      seg.appendChild(b);
+    }
+  }
+  // 菜单/加载页文案与小地图参数随地图切换
+  setMapInfo(desc) {
+    this.mapDesc = desc;
+    document.title = `${desc.name} · 穿越火线 3D`;
+    this.el.mapTitle.textContent = desc.name;
+    this.el.mapEn.textContent = desc.en;
+    this.el.mapBlurb.innerHTML = desc.menu ? desc.menu.blurb : '';
+    this.el.loadTitle.textContent = desc.name.split('').join(' ');
+    this.el.boardTitle.textContent = `${desc.name} · ${getMode(desc.defaultMode).name}`;
+  }
   buildMenu() {
     const o = this.opts;
+    this.buildMapSeg();
     const segs = this.root.querySelectorAll('.seg[data-k]');
     for (const s of segs) {
       const k = s.dataset.k;
       for (const b of s.querySelectorAll('button')) {
+        if (b.disabled) continue;
         if (String(o[k]) === b.dataset.v) b.classList.add('on');
         b.addEventListener('click', () => {
           for (const x of s.querySelectorAll('button')) x.classList.remove('on');
@@ -97,7 +122,7 @@ export class HUD {
     e.sBL.textContent = s.score.BL; e.sGR.textContent = s.score.GR;
     const tl = Math.max(0, s.timeLeft), mm = (tl / 60) | 0, ss = (tl % 60) | 0;
     e.sTime.textContent = `${mm}:${ss < 10 ? '0' : ''}${ss}`;
-    e.sGoal.textContent = `团队竞技 · 目标 ${s.goal}`;
+    e.sGoal.textContent = `${s.modeName || '团队竞技'} · 目标 ${s.goal}`;
     e.tBL.classList.toggle('mine', s.myTeam === 'BL'); e.tGR.classList.toggle('mine', s.myTeam === 'GR');
     // 生命护甲
     e.hpVal.textContent = Math.max(0, Math.ceil(s.hp));
@@ -215,17 +240,18 @@ export class HUD {
     this.el.endTable.innerHTML = `<div class="cols">${tbl('BL')}${tbl('GR')}</div>`;
   }
   // ---------- 小地图 ----------
-  buildRadar(world) {
-    const S = 8; // px/m
-    const W = 74 * S, H = 26 * S;
+  buildRadar(world, desc) {
+    const R = desc.radar, S = 8; // px/m
+    this.radarOff = { x: R.offX, z: R.offZ };
+    const W = R.widthM * S, H = R.heightM * S;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const x = c.getContext('2d');
     x.fillStyle = 'rgba(70,80,84,0.95)'; x.fillRect(0, 0, W, H);
-    const cols = [...world.colliders].filter((k) => k.solid && k.top > 0.3 && k.bottom < 2 && k.hx < 30 && k.tag !== 'deck').sort((a, b) => a.top - b.top);
+    const cols = [...world.colliders].filter((k) => k.solid && k.top > 0.3 && k.bottom < 2 && k.hx < R.maxColliderHalf && k.tag !== 'deck').sort((a, b) => a.top - b.top);
     for (const k of cols) {
       if (k.bullet === 'pass' && k.mat !== 'mesh') continue;
       x.save();
-      x.translate((k.x + 37) * S, (k.z + 13) * S);
+      x.translate((k.x + R.offX) * S, (k.z + R.offZ) * S);
       x.rotate(-k.yaw);
       const hgt = k.top;
       x.fillStyle = k.mat === 'mesh' ? 'rgba(200,200,190,.5)' : hgt > 4 ? '#1d2327' : hgt > 2 ? '#2d353a' : hgt > 1.3 ? '#3b454b' : '#56616a';
@@ -234,23 +260,22 @@ export class HUD {
       x.strokeRect(-k.hx * S, -k.hz * S, k.hx * 2 * S, k.hz * 2 * S);
       x.restore();
     }
-    // 管道顶棚（二楼）用虚线表示
+    // 顶层结构（如二楼管道顶棚）用虚线表示
     x.strokeStyle = 'rgba(245,179,33,.35)'; x.setLineDash([6, 4]);
-    x.strokeRect((-29.5 + 37) * S, (9.4 + 13) * S, 36.6 * S, 2.44 * S);
-    x.strokeRect((29.5 - 36.6 + 37) * S, (-11.84 + 13) * S, 36.6 * S, 2.44 * S);
+    for (const o of R.overlays || []) x.strokeRect(o.x * S + R.offX * S, o.z * S + R.offZ * S, o.w * S, o.h * S);
     this.radarImg = c; this.radarS = S;
   }
   drawRadar(me, actors, t) {
     const ctx = this.radarCtx, cv = this.el.radar;
     const W = cv.width = cv.clientWidth * 1.5 | 0, H = cv.height = cv.clientHeight * 1.5 | 0;
     ctx.clearRect(0, 0, W, H);
-    if (!this.radarImg) return;
-    const S = this.radarS, zoom = 0.55 * (W / 294);
+    if (!this.radarImg || !this.radarOff) return;
+    const S = this.radarS, off = this.radarOff, zoom = 0.55 * (W / 294);
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.rotate(me.yaw);
     ctx.scale(zoom, zoom);
-    ctx.translate(-(me.pos.x + 37) * S, -(me.pos.z + 13) * S);
+    ctx.translate(-(me.pos.x + off.x) * S, -(me.pos.z + off.z) * S);
     ctx.globalAlpha = 0.95;
     ctx.drawImage(this.radarImg, 0, 0);
     ctx.globalAlpha = 1;
@@ -258,7 +283,7 @@ export class HUD {
       if (a === me) continue;
       const seen = a.team === me.team || (a.radarT > 0);
       if (!seen) continue;
-      const px = (a.pos.x + 37) * S, pz = (a.pos.z + 13) * S;
+      const px = (a.pos.x + off.x) * S, pz = (a.pos.z + off.z) * S;
       if (!a.alive) {
         if (a.team !== me.team || a.deadT > 5) continue;
         ctx.strokeStyle = '#9aa'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px - 8, pz - 8); ctx.lineTo(px + 8, pz + 8); ctx.moveTo(px + 8, pz - 8); ctx.lineTo(px - 8, pz + 8); ctx.stroke();
@@ -319,19 +344,19 @@ const TEMPLATE = `
   <div id="toast"></div>
   <div id="protect"></div>
   <div id="nameTip"></div>
-  <div id="board" class="hidden tbl"><h3><span>运输船 · 团队竞技</span><span>Tab</span></h3><div id="boardBody"></div></div>
+  <div id="board" class="hidden tbl"><h3><span id="boardTitle">运输船 · 团队竞技</span><span>Tab</span></h3><div id="boardBody"></div></div>
   <div id="touch" class="hidden"></div>
 </div>
 
-<div id="loading" class="screen"><div class="t">运 输 船</div><div class="s" id="loadTxt">LOADING</div><div class="bar"><i id="loadBar"></i></div><div class="tip">小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。</div></div>
+<div id="loading" class="screen"><div class="t" id="loadTitle">运 输 船</div><div class="s" id="loadTxt">LOADING</div><div class="bar"><i id="loadBar"></i></div><div class="tip">小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。</div></div>
 
 <div id="menu" class="screen hidden">
   <div class="menuBox">
     <div class="title">
       <div class="logo">CROSSFIRE · 团队竞技</div>
-      <h1>运输船</h1>
-      <div class="en">TRANSPORT SHIP</div>
-      <p>联合国维和行动在监视非法军火出口时，发现一艘从俄罗斯驶往尼日利亚的可疑货轮。保卫者（Global Risk）奉命登船突击检查，却遭到潜伏者（Black List）伏击。<br>船头船尾两个船舱出生，中路 V 形斜放集装箱、两侧 L 形箱堆，左右各有一条只能从己方出生点进入的集装箱管道，管道顶上就是可以架枪的二楼。</p>
+      <h1 id="mapTitle">运输船</h1>
+      <div class="en" id="mapEn">TRANSPORT SHIP</div>
+      <p id="mapBlurb"></p>
       <div class="keys">
         <kbd>W A S D</kbd><span>移动　<kbd>Shift</kbd> 静步　<kbd>空格</kbd> 跳　<kbd>C</kbd> 蹲</span>
         <kbd>鼠标左键</kbd><span>开火　<kbd>右键</kbd> 狙击开镜 / 刀重击</span>
@@ -342,6 +367,7 @@ const TEMPLATE = `
       <div class="note hidden" id="touchNote">检测到触屏设备：已启用虚拟摇杆（左侧移动、右侧滑动视角）。电脑 + 鼠标体验最佳。</div>
     </div>
     <div class="opts">
+      <div class="opt"><div class="lab">地图</div><div class="seg" data-k="map" id="mapSeg"></div></div>
       <div class="opt"><div class="lab">阵营</div><div class="seg team" data-k="team"><button data-v="BL">潜伏者<small>Black List</small></button><button data-v="GR">保卫者<small>Global Risk</small></button></div></div>
       <div class="opt"><div class="lab">主武器</div><div class="seg" data-k="primary"><button data-v="ak47">AK-47</button><button data-v="m4a1">M4A1</button><button data-v="awm">AWM</button><button data-v="mp5">MP5</button></div></div>
       <div class="row2">

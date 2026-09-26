@@ -206,7 +206,7 @@ function makeClouds(preset) {
 }
 
 export class Environment {
-  constructor(renderer, scene, quality) {
+  constructor(renderer, scene, quality, opts = {}) {
     this.renderer = renderer; this.scene = scene;
     this.preset = PRESETS.day;
     this.sky = new Sky(); this.sky.scale.setScalar(40000);
@@ -230,7 +230,7 @@ export class Environment {
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.envRT = null;
     this.shipDist = 0;
-    this.shipSpeed = 6.5;
+    this.shipSpeed = opts.shipSpeed ?? 6.5;
     this.apply('day');
   }
   apply(name) {
