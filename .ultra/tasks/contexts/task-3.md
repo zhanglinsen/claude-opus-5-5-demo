@@ -1,31 +1,23 @@
-# Task 3: 爆破规则、C4与目标型AI
+# Task 3: 语言服务、目录与设置兼容
 
-Status source: ../tasks.json task 3.
+Status source: `../tasks.json`, task `3`.
 
 ## Context
-Read .ultra/specs/desert-grey.md in full. User authorized implementation and sequential automated phase gates. This is phase 3 of 6. You are GLM-5.3-Flash, the IMPLEMENTER. All source/test changes must be made by you; do not invoke other models or agents. Do not invoke Astra, Codex, or delegate. User's role restrictions take precedence over any skill recommendations. No push/deploy/global config changes. Work only in cf-transport-ship, its README/provenance docs, and task evidence. Do not edit .ultra/specs or task scope/status. Use existing code as reference; inspect before editing. Avoid exposing credentials.
+What: 提供中英文本目录、t(key, params)、语言来源优先级、订阅和持久选择。Why: 各界面可独立本地化。Constraints: 不改地图、装备、军衔的持久 ID，现有 `cf_opts_v2` 可读。
 
 ## Implementation
-Implement complete tested bomb-mode round state machine, C4 ownership/drop/pickup/plant/defuse/detonate, scoring, spectating teammates, objectives AI, preparation loadout, pause/reset. Activate default Desert Grey bomb mode. Full user Rules and Controls apply. No omniscient bot target access. Browser/test simulation must demonstrate actual plant/defuse and navigation. Add deterministic pure-rule boundary tests; solve gameplay integration, not merely standalone unused classes.
-Keep source small and modular. Do not prematurely implement future phases. Use real browser tests with installed Chrome at /Applications/Google Chrome.app/Contents/MacOS/Google Chrome and playwright-core where available, CLI npm/node is authorized. Fix necessary bugs revealed within scope. You have read/write/Bash tools and permission to install project's declared npm dependencies. At most one implementation process edits this tree. Evidence files go under cf-transport-ship/artifacts (gitignored), textual report in .ultra/reports/phase-3-implementation.md. Tests must prove user-visible behavior, not duplicate constants. No tests may silently skip required acceptance and report success.
+Target files: 新建 `src/i18n/`、`src/settings.js` 与聚焦单测。Existing pattern: `settings.js` 的 normalize/acquireStorage。Technical notes: 通过 `lang` 空值表示自动；用户选择优先，其次适配器返回的 Y8 locale，再次 navigator，最后构建默认。只增加设置字段和纯服务，不触碰 HUD/game.js。目录新增稳定键，后续任务补足调用点。Effort/complexity: 5，涉及动态状态与旧设置兼容。
 
 ## Acceptance
-- Implement the phase scope above and check its actual browser integration.
-- Run npm build and targeted tests inside cf-transport-ship; record exact commands and results.
-- Preserve transport-ship functionality with minimum smoke regression.
-- Provide changed files, limitations, screenshot paths and objective evidence for independent Sol review.
+- 中英目录键一致，缺键有可诊断回退；切换通知订阅者。
+- 旧 `cf_opts_v2` 和抛错 storage 下仍可进入游戏。
+- Command: `node --test tests/unit/i18n.test.mjs tests/unit/settings.test.mjs`
 
 ## Trace
-Source: .ultra/specs/desert-grey.md#rules
+Source: `.ultra/specs/platform-expansion.md#US-02`。Story IDs: US-02。Accepted gaps: none。
+
+## Change Log
+2026-09-27：依据既有 v2 设置模块分配文件所有权。
 
 ## Completion
-To be supplied by implementer report. Do not claim unrun validation.
-
-
-## User workflow update — 2026-09-26
-
-User has changed reviewer allocation to conserve Codex quota. Complete the currently running phase-1 Sol rereview (same thread resumed after brief interruption). All SUBSEQUENT independent reviews/rereviews use fresh GLM-5.3-Flash CLI sessions with --effort max instead of Sol. Implementer remains GLM-5.3-Flash (--effort high unless user changes it); Astra only planning/orchestration. All work remains CLI dispatched. Independent read-only review domains may run concurrently against frozen source; implementation of dependent stages stays sequential and only one product writer at a time unless explicit disjoint-file ownership is planned. No self-review: reviewer must use fresh isolated context. Existing historical Sol reports remain valid evidence. This update supersedes old Sol-only language below/above.
-
-## Latest user testing constraint — necessary tests only
-
-User explicitly requests reducing excessive testing. Keep meaningful build, critical gameplay/rules/navigation checks, actual user startup, and targeted regression for changed behavior. Do not rerun an unchanged full suite, duplicate assertions, add implementation-mirroring tests, or broaden audits without a concrete remaining risk. Prefer a targeted case and stop once the relevant risk is resolved. Preserve required final acceptance (20 seeded bomb rounds, >=600 seconds actual rendering, dual-map HTTP/file workflows); run these once on the final candidate and repeat only affected evidence after fixes. Tests must remain honest and non-vacuous.
+待执行；记录红绿重构和兼容证据。

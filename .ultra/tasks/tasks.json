@@ -1,115 +1,35 @@
 {
   "schema_version": "1.0.0",
-  "created": "2026-09-26",
+  "created": "2026-09-27",
   "planning": {
     "phase": "complete",
     "scope_mode": "SELECTIVE",
-    "decision_ref": "User approved full plan on 2026-09-26",
-    "included_story_ids": [],
+    "decision_ref": "User approved bilingual dual-map Y8/GameMonetize implementation and 23:00 gated start on 2026-09-27",
+    "included_story_ids": ["US-01", "US-02", "US-03", "US-04", "US-05", "US-06"],
     "excluded_story_ids": [],
-    "story_refs": {},
-    "required_spec_refs": [
-      ".ultra/specs/desert-grey.md#scope"
-    ],
+    "story_refs": {
+      "US-01": ".ultra/specs/platform-expansion.md#US-01",
+      "US-02": ".ultra/specs/platform-expansion.md#US-02",
+      "US-03": ".ultra/specs/platform-expansion.md#US-03",
+      "US-04": ".ultra/specs/platform-expansion.md#US-04",
+      "US-05": ".ultra/specs/platform-expansion.md#US-05",
+      "US-06": ".ultra/specs/platform-expansion.md#US-06"
+    },
+    "required_spec_refs": [".ultra/specs/platform-expansion.md#US-01", ".ultra/specs/platform-expansion.md#US-02", ".ultra/specs/platform-expansion.md#US-03", ".ultra/specs/platform-expansion.md#US-04", ".ultra/specs/platform-expansion.md#US-05", ".ultra/specs/platform-expansion.md#US-06"],
     "gaps": []
   },
   "tasks": [
-    {
-      "id": "1",
-      "title": "共享接口与运输船适配",
-      "type": "feature",
-      "priority": "P1",
-      "complexity": 6,
-      "status": "completed",
-      "dependencies": [],
-      "context_file": "contexts/task-1.md",
-      "trace_to": ".ultra/specs/desert-grey.md#architecture",
-      "story_ids": []
-    },
-    {
-      "id": "2",
-      "title": "沙漠灰白模、碰撞和导航",
-      "type": "feature",
-      "priority": "P1",
-      "complexity": 8,
-      "status": "completed",
-      "dependencies": [
-        "1"
-      ],
-      "context_file": "contexts/task-2.md",
-      "trace_to": ".ultra/specs/desert-grey.md#map",
-      "story_ids": []
-    },
-    {
-      "id": "3",
-      "title": "爆破规则、C4与目标型AI",
-      "type": "feature",
-      "priority": "P1",
-      "complexity": 8,
-      "status": "completed",
-      "dependencies": [
-        "2"
-      ],
-      "context_file": "contexts/task-3.md",
-      "trace_to": ".ultra/specs/desert-grey.md#rules",
-      "story_ids": []
-    },
-    {
-      "id": "4",
-      "title": "战斗完善、投掷物与练习模式",
-      "type": "feature",
-      "priority": "P1",
-      "complexity": 6,
-      "status": "completed",
-      "dependencies": [
-        "3"
-      ],
-      "context_file": "contexts/task-4.md",
-      "trace_to": ".ultra/specs/desert-grey.md#combat",
-      "story_ids": []
-    },
-    {
-      "id": "7",
-      "title": "本地军衔与装备配置",
-      "type": "feature",
-      "priority": "P1",
-      "complexity": 6,
-      "status": "completed",
-      "dependencies": [
-        "2"
-      ],
-      "context_file": "contexts/task-7.md",
-      "trace_to": ".ultra/specs/desert-grey.md#profile",
-      "story_ids": []
-    },
-    {
-      "id": "5",
-      "title": "画面、HUD、音效与触屏",
-      "type": "feature",
-      "priority": "P1",
-      "complexity": 6,
-      "status": "completed",
-      "dependencies": [
-        "4",
-        "7"
-      ],
-      "context_file": "contexts/task-5.md",
-      "trace_to": ".ultra/specs/desert-grey.md#controls",
-      "story_ids": []
-    },
-    {
-      "id": "6",
-      "title": "双地图回归与本地交付",
-      "type": "feature",
-      "priority": "P1",
-      "complexity": 6,
-      "status": "completed",
-      "dependencies": [
-        "5"
-      ],
-      "context_file": "contexts/task-6.md",
-      "trace_to": ".ultra/specs/desert-grey.md#verification",
-      "story_ids": []
-    }
+    {"id":"1","title":"冻结旧阶段证据并发布新任务周期","type":"architecture","priority":"P0","complexity":3,"status":"completed","dependencies":[],"context_file":"contexts/task-1.md","trace_to":".ultra/specs/platform-expansion.md#US-06","story_ids":["US-06"]},
+    {"id":"2","title":"品牌组件与原图接入","type":"feature","priority":"P1","complexity":3,"status":"pending","dependencies":["1"],"context_file":"contexts/task-2.md","trace_to":".ultra/specs/platform-expansion.md#US-01","story_ids":["US-01"]},
+    {"id":"3","title":"语言服务、目录与设置兼容","type":"feature","priority":"P1","complexity":5,"status":"pending","dependencies":["1"],"context_file":"contexts/task-3.md","trace_to":".ultra/specs/platform-expansion.md#US-02","story_ids":["US-02"]},
+    {"id":"4","title":"平台接口、广告状态与离线适配器","type":"architecture","priority":"P1","complexity":6,"status":"pending","dependencies":["1"],"context_file":"contexts/task-4.md","trace_to":".ultra/specs/platform-expansion.md#US-03","story_ids":["US-03"]},
+    {"id":"5","title":"沙漠主题地图的原创平台版","type":"feature","priority":"P1","complexity":6,"status":"pending","dependencies":["1"],"context_file":"contexts/task-5.md","trace_to":".ultra/specs/platform-expansion.md#US-04","story_ids":["US-04"]},
+    {"id":"6","title":"运输船主题地图的原创平台版","type":"feature","priority":"P1","complexity":6,"status":"pending","dependencies":["1"],"context_file":"contexts/task-6.md","trace_to":".ultra/specs/platform-expansion.md#US-04","story_ids":["US-04"]},
+    {"id":"7","title":"Y8 广告与语言适配器","type":"feature","priority":"P1","complexity":5,"status":"pending","dependencies":["4"],"context_file":"contexts/task-7.md","trace_to":".ultra/specs/platform-expansion.md#US-03","story_ids":["US-03"]},
+    {"id":"8","title":"GameMonetize 广告适配器","type":"feature","priority":"P1","complexity":4,"status":"pending","dependencies":["4"],"context_file":"contexts/task-8.md","trace_to":".ultra/specs/platform-expansion.md#US-03","story_ids":["US-03"]},
+    {"id":"9","title":"菜单与 HUD 本地化","type":"feature","priority":"P1","complexity":6,"status":"pending","dependencies":["2","3"],"context_file":"contexts/task-9.md","trace_to":".ultra/specs/platform-expansion.md#US-02","story_ids":["US-01","US-02"]},
+    {"id":"10","title":"战斗消息与档案名称本地化","type":"feature","priority":"P1","complexity":5,"status":"pending","dependencies":["3"],"context_file":"contexts/task-10.md","trace_to":".ultra/specs/platform-expansion.md#US-02","story_ids":["US-02"]},
+    {"id":"11","title":"整合主控与三种构建产物","type":"feature","priority":"P1","complexity":6,"status":"pending","dependencies":["5","6","7","8","9","10"],"context_file":"contexts/task-11.md","trace_to":".ultra/specs/platform-expansion.md#US-05","story_ids":["US-03","US-04","US-05"]},
+    {"id":"12","title":"定向验收、独立审核与交付","type":"feature","priority":"P1","complexity":5,"status":"pending","dependencies":["11"],"context_file":"contexts/task-12.md","trace_to":".ultra/specs/platform-expansion.md#US-06","story_ids":["US-05","US-06"]}
   ]
 }

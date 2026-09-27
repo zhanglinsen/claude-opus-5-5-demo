@@ -1,31 +1,23 @@
-# Task 4: 战斗完善、投掷物与练习模式
+# Task 4: 平台接口、广告状态与离线适配器
 
-Status source: ../tasks.json task 4.
+Status source: `../tasks.json`, task `4`.
 
 ## Context
-Read .ultra/specs/desert-grey.md in full. User authorized implementation and sequential automated phase gates. This is phase 4 of 6. You are GLM-5.3-Flash, the IMPLEMENTER. All source/test changes must be made by you; do not invoke other models or agents. Do not invoke Astra, Codex, or delegate. User's role restrictions take precedence over any skill recommendations. No push/deploy/global config changes. Work only in cf-transport-ship, its README/provenance docs, and task evidence. Do not edit .ultra/specs or task scope/status. Use existing code as reference; inspect before editing. Avoid exposing credentials.
+What: 定义 PlatformAdapter 合同与广告暂停生命周期，给 Y8/GM 提供可复用接入点。Why: 平台差异不渗入游戏规则。Constraints: 广告无填充不得暂停；原用户暂停和音量必须保留。
 
 ## Implementation
-Complete shared HE/flash/smoke with geometry/AI occlusion, weapon drop/pickup and slot cycles, classic controls, TDM modes and static-target free practice on both maps. Verify existing weapons/reload/scope/armor/penetration and modes boundary. Add meaningful tests and real browser workflows.
-Keep source small and modular. Do not prematurely implement future phases. Use real browser tests with installed Chrome at /Applications/Google Chrome.app/Contents/MacOS/Google Chrome and playwright-core where available, CLI npm/node is authorized. Fix necessary bugs revealed within scope. You have read/write/Bash tools and permission to install project's declared npm dependencies. At most one implementation process edits this tree. Evidence files go under cf-transport-ship/artifacts (gitignored), textual report in .ultra/reports/phase-4-implementation.md. Tests must prove user-visible behavior, not duplicate constants. No tests may silently skip required acceptance and report success.
+Target files: 新建 `src/platform/contract.js`, `offline.js`, `ad-session.js`、`src/audio.js` 和聚焦单测。Existing pattern: `game.js` pause/resume、`audio.js` setVolumes。Technical notes: 广告暂停是独立原因，成对、幂等；音频临时静音不写回设置。离线适配器不发网络请求。此任务只定义 contract，不修改 game.js/build.mjs，供任务 7/8 与最终集成复用。Effort/complexity: 6，核心在状态恢复边界。
 
 ## Acceptance
-- Implement the phase scope above and check its actual browser integration.
-- Run npm build and targeted tests inside cf-transport-ship; record exact commands and results.
-- Preserve transport-ship functionality with minimum smoke regression.
-- Provide changed files, limitations, screenshot paths and objective evidence for independent Sol review.
+- 开始/结束、无广告、失败和重复回调后状态与音量正确。
+- 离线适配器可在无 window/SDK 环境构造。
+- Command: `node --test tests/unit/platform-contract.test.mjs tests/unit/ad-session.test.mjs`
 
 ## Trace
-Source: .ultra/specs/desert-grey.md#combat
+Source: `.ultra/specs/platform-expansion.md#US-03`。Story IDs: US-03。Accepted gaps: none。
+
+## Change Log
+2026-09-27：将音频临时静音与持久音量分离。
 
 ## Completion
-To be supplied by implementer report. Do not claim unrun validation.
-
-
-## User workflow update — 2026-09-26
-
-User has changed reviewer allocation to conserve Codex quota. Complete the currently running phase-1 Sol rereview (same thread resumed after brief interruption). All SUBSEQUENT independent reviews/rereviews use fresh GLM-5.3-Flash CLI sessions with --effort max instead of Sol. Implementer remains GLM-5.3-Flash (--effort high unless user changes it); Astra only planning/orchestration. All work remains CLI dispatched. Independent read-only review domains may run concurrently against frozen source; implementation of dependent stages stays sequential and only one product writer at a time unless explicit disjoint-file ownership is planned. No self-review: reviewer must use fresh isolated context. Existing historical Sol reports remain valid evidence. This update supersedes old Sol-only language below/above.
-
-## Latest user testing constraint — necessary tests only
-
-User explicitly requests reducing excessive testing. Keep meaningful build, critical gameplay/rules/navigation checks, actual user startup, and targeted regression for changed behavior. Do not rerun an unchanged full suite, duplicate assertions, add implementation-mirroring tests, or broaden audits without a concrete remaining risk. Prefer a targeted case and stop once the relevant risk is resolved. Preserve required final acceptance (20 seeded bomb rounds, >=600 seconds actual rendering, dual-map HTTP/file workflows); run these once on the final candidate and repeat only affected evidence after fixes. Tests must remain honest and non-vacuous.
+待执行；记录合同和边界测试。

@@ -1,31 +1,31 @@
-# Task 1: 共享接口与运输船适配
+# Task 1: 冻结旧阶段证据并发布新任务周期
 
-Status source: ../tasks.json task 1.
+Status source: `../tasks.json`, task `1`.
 
 ## Context
-Read .ultra/specs/desert-grey.md in full. User authorized implementation and sequential automated phase gates. This is phase 1 of 6. You are GLM-5.3-Flash, the IMPLEMENTER. All source/test changes must be made by you; do not invoke other models or agents. Do not invoke Astra, Codex, or delegate. User's role restrictions take precedence over any skill recommendations. No push/deploy/global config changes. Work only in cf-transport-ship, its README/provenance docs, and task evidence. Do not edit .ultra/specs or task scope/status. Use existing code as reference; inspect before editing. Avoid exposing credentials.
+What: 仅在 2026-09-27 23:00 +08:00 后，且旧视觉阶段最终交付真实通过时启动新周期。Why: 避免当前视觉实现与本阶段争用。Constraints: 历史 `final-handoff.md` 不算视觉完成；`BLOCKED.md` 未解决时暂停新阶段。
 
 ## Implementation
-Introduce map registry/descriptor and mode adapter supporting the EXISTING transport-ship only at this gate. Preserve ship geometry and gameplay. Parameterize map/environment/radar/spawns/menu/orbit/AI ship constants. Add settings migration and map-selection architecture. Desert Grey entry may be metadata marked unavailable until phase 2; do NOT deliver fake desert geometry or implement bomb/grenade features. Verify transport ship build and playable HTTP/file smoke. Add npm dev/test/test:e2e minimal scripts and targeted meaningful tests. Add .gitignore for generated artifacts/test screenshots and logs. Do not alter unrelated games. At end report changed files, commands, results, known remaining work. Read frontend-design skill for UI principles only when relevant, and preserve existing CF look.
-Keep source small and modular. Do not prematurely implement future phases. Use real browser tests with installed Chrome at /Applications/Google Chrome.app/Contents/MacOS/Google Chrome and playwright-core where available, CLI npm/node is authorized. Fix necessary bugs revealed within scope. You have read/write/Bash tools and permission to install project's declared npm dependencies. At most one implementation process edits this tree. Evidence files go under cf-transport-ship/artifacts (gitignored), textual report in .ultra/reports/phase-1-implementation.md. Tests must prove user-visible behavior, not duplicate constants. No tests may silently skip required acceptance and report success.
+Target files: `.ultra/tasks/`, `.ultra/next-stage/`, `.ultra/reports/`。Existing pattern: 当前 `.ultra/tasks/tasks.json` 与 `visual-quality-in-progress.md`。Technical notes: 核对 `final-visual-handoff.md` 的截图、性能、独立审核与离线产物；已有 `.ultra/snapshots/visual-wip-20260927-171454+0800/` 可恢复快照，验收后如有新增更改可补快照。先选择性提交旧阶段源码、必要测试和文档，不提交临时日志、性能产物或快照，也不推送。记录提交哈希，再将旧 registry 与 contexts 命名归档，原子发布本周期 JSON/contexts；不要覆盖旧报告。Effort/complexity: 小型协调任务，文件量多但不改游戏代码。
 
 ## Acceptance
-- Implement the phase scope above and check its actual browser integration.
-- Run npm build and targeted tests inside cf-transport-ship; record exact commands and results.
-- Preserve transport-ship functionality with minimum smoke regression.
-- Provide changed files, limitations, screenshot paths and objective evidence for independent Sol review.
+- 旧周期完整可恢复、已有验收通过的旧阶段有本地 Git 提交且哈希记录；新任务 registry 与 contexts 一致。
+- 缺交付或存在未解决阻塞时无 GLM 新阶段任务启动。
+- Command: `python3 -B /Users/sen/.codex/skills/ultra-plan/scripts/validate_plan.py .ultra/tasks/tasks.json`
 
 ## Trace
-Source: .ultra/specs/desert-grey.md#architecture
+Source: `.ultra/specs/platform-expansion.md#US-06`。Story IDs: US-06。Accepted gaps: none。
+
+## Change Log
+2026-09-27：按用户确认的 23:00 门槛创建。
+2026-09-28：执行完毕，registry 已切换，任务 1 标记 complete。
 
 ## Completion
-To be supplied by implementer report. Do not claim unrun validation.
+2026-09-28 执行记录：
 
-
-## User workflow update — 2026-09-26
-
-User has changed reviewer allocation to conserve Codex quota. Complete the currently running phase-1 Sol rereview (same thread resumed after brief interruption). All SUBSEQUENT independent reviews/rereviews use fresh GLM-5.3-Flash CLI sessions with --effort max instead of Sol. Implementer remains GLM-5.3-Flash (--effort high unless user changes it); Astra only planning/orchestration. All work remains CLI dispatched. Independent read-only review domains may run concurrently against frozen source; implementation of dependent stages stays sequential and only one product writer at a time unless explicit disjoint-file ownership is planned. No self-review: reviewer must use fresh isolated context. Existing historical Sol reports remain valid evidence. This update supersedes old Sol-only language below/above.
-
-## Latest user testing constraint — necessary tests only
-
-User explicitly requests reducing excessive testing. Keep meaningful build, critical gameplay/rules/navigation checks, actual user startup, and targeted regression for changed behavior. Do not rerun an unchanged full suite, duplicate assertions, add implementation-mirroring tests, or broaden audits without a concrete remaining risk. Prefer a targeted case and stop once the relevant risk is resolved. Preserve required final acceptance (20 seeded bomb rounds, >=600 seconds actual rendering, dual-map HTTP/file workflows); run these once on the final candidate and repeat only affected evidence after fixes. Tests must remain honest and non-vacuous.
+- **门槛确认**：`.ultra/reports/final-visual-fidelity-handoff.md` 终审 PASS-WITH-CONDITIONS，用户已接受主机竞争限制条件；`BLOCKED.md` 已标 RESOLVED；互斥标记已清除。视觉源码提交 `60fed10`/`1d199bb`/`7c406ed` 均在本地分支 `codex/desert-grey`。
+- **快照核对**：`.ultra/snapshots/visual-wip-20260927-171454+0800/`（head `c935ace`，branch `codex/desert-grey`）manifest/tracked.patch(233,309B)/untracked-and-evidence.tar.gz(19,463,436B, 208 条目)/post-snapshot-plan-update.tar.gz(6,327B, 4 条目) 均非空，三文件 SHA-256 与 manifest 一致，tar 可完整读取。
+- **证据核对**：截图 `artifacts/fidelity-baseline|fidelity-after|fidelity-after-low|fidelity-after-high|fidelity-final-filesmoke/`、性能 JSON `fidelity-verify.json`、`e2e-desert-results.json`、`accept-restart-check.json`、`accept-gpu-fidelity-20260927.json`、`accept-gpu-fidelity-calls-probe2-20260927.json`、`accept-gpu-desert-calm-20260927.json`、参考图 `.ultra/references/visual-quality-20260927/`、独立审核报告 `.ultra/reports/workbuddy-visual-fidelity-max-review.md`、`workbuddy-final-visual-review.md`、`workbuddy-final-performance.md` 全部在位非空。
+- **旧阶段提交**：报告与 BLOCKED.md → `a5d2f8a`；规格 `platform-expansion.md` → `8df8c2c`。未提交 artifacts/快照/`.workbuddy`/临时文件；未推送。
+- **归档与发布**：旧 registry（2026-09-26 周期，7 任务全 completed）→ `.ultra/archive/20260926-20260928-desert-grey-tasks/`；`.ultra/next-stage/tasks.json` + contexts（12 任务）已原子发布到 `.ultra/tasks/`。`next-stage/` 原样保留。
+- **验证**：`validate_plan.py .ultra/tasks/tasks.json` → `{"status":"valid","errors":[],"pending":[],"warnings":[]}`；发布前暂存目录经 JSON/contexts/依赖闭环校验通过。

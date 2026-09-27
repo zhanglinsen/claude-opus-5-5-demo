@@ -1,7 +1,23 @@
-# Task 7: Local rank and equipment profile
+# Task 7: Y8 广告与语言适配器
 
-Read approved .ultra/specs/desert-grey.md new user requirements and TDD skill /Users/sen/.codex/skills/tdd/SKILL.md. You are GLM-5.3-Flash implementer. All source changes through CLI. User wants necessary tests, not broad repetitive suites. Latest workflow replaces Sol with independent GLM MAX reviews. User has authorized parallel work only with exclusive file ownership and no simultaneous writes to shared files; coordinator supplies per-subtask ownership before dispatch. Do not delegate.
+Status source: `../tasks.json`, task `7`.
 
-Implement a local profile with named military rank/level, deterministic XP thresholds, mode-specific completed-match stats, three full equipment presets and active selection. Persist separately from cf_opts_v2 through guarded versioned localStorage, migrate the old primary preference, normalize damaged records. All gun/sidearm/melee/grenade/armor choices must be supported by actual combat code or deferred UI selections should clearly not claim active until integration. Rank XP only from completed competitive play and once per unique result; practice gives none. No online requests, no shop/grind gate. Menu/HUD show rank, XP progress, active loadout and save status; in-match equip timing follows phase/mode rules. Reload page must restore profile and preset. Preserve ship and Desert functionality.
+## Context
+What: Y8 SDK 的初始化、平台语言和自然断点广告实现 PlatformAdapter。Why: 保持 SDK 逻辑独立。Constraints: 不做登录、云存档、激励或横幅；正式包需要 App ID 和 Game ID。
 
-Apply red→green→refactor vertically to new behavior: first one failing public-seam test, then minimal implementation, repeat. Record red/green command/evidence in report. Prefer pure domain functions + application profile service + infrastructure storage adapter + presentation integration; one source of truth, no direct localStorage in game/HUD. Tests observe public behavior, not implementation internals/constants. After integration run one targeted browser save/reload workflow. Keep reports honest and focused; report .ultra/reports/phase-7-implementation.md. Stage7 gate review by fresh GLM MAX. No commit/deploy/global config changes.
+## Implementation
+Target files: `src/platform/y8.js` 与专属 mock 测试。Existing pattern: Task 4 contract。Technical notes: 注入 window/script loader 以测试 async 加载；同时监听 `y8sdk.ready` 并调用 `emitReadyEvent()` 处理先加载竞态；广告 `showAd({type:'next',beforeAd,afterAd})`，只在 beforeAd 暂停。`getPlatformLocale()` 失败则返回空值。只改本适配器目录，不改 HTML/build/game。Effort/complexity: 5，SDK 回调竞态需验证。
+
+## Acceptance
+- SDK 先到与后到都只初始化一次；缺 SDK 时游戏可继续。
+- 无广告填充不暂停，广告开始/结束成对通知。
+- Command: `node --test tests/unit/platform-y8.test.mjs`
+
+## Trace
+Source: `.ultra/specs/platform-expansion.md#US-03`。Story IDs: US-03。Accepted gaps: none。
+
+## Change Log
+2026-09-27：官方文档 https://docs.y8.com/sdk/intro/ 与 https://docs.y8.com/sdk/advertising/。
+
+## Completion
+待执行；记录 mock 回调及 HTTP 结果。
