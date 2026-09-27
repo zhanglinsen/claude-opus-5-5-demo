@@ -8,6 +8,7 @@ import { Game } from './game.js';
 import { createGameLocale } from './i18n/index.js';
 import { installPlatform, OfflinePlatformAdapter } from './platform/index.js';
 import { resolvePlatformConfig, mockMarker } from './platform/config.js';
+import { createPlatformLocaleBridge } from './platform/locale-bridge.js';
 
 (async () => {
   // 正式 ID 不打进包内（包不含任何真实密钥）：部署页经 window.__PLATFORM_IDS__ 注入；
@@ -38,10 +39,17 @@ import { resolvePlatformConfig, mockMarker } from './platform/config.js';
   }
 
   // 单一语言实例：优先级（玩家保存 > 平台语言 > 浏览器 > 构建默认）在服务内解析。
-  // 平台语言只来自真实平台适配器（Y8/GM 已注入正式 ID）；离线/mock 无平台语言，
-  // 不传 platformLocale，浏览器语言得以参与解析（构建默认仍兜底：平台 en / 离线 zh）。
+  // 平台语言只来自真实平台适配器（Y8/GM 已注入正式 ID），且只在 SDK 就绪后生效
+  // （locale-bridge）：就绪前适配器内部 fallback（Y8 'zh-cn'）不是真实平台语言，
+  // getter 返回 null 落到浏览器语言 → 构建默认；ready 成功后仅自动档重解析一次
+  // （显式选择不被覆盖，失败保持浏览器/默认）。离线保持离线适配器语言，mock 无平台语言。
+  const localeBridge = __BUILD_TARGET__ === 'offline' || config.mock
+    ? null
+    : createPlatformLocaleBridge({ getLanguage: () => adapter.language });
   const locale = createGameLocale({
-    platformLocale: config.mock ? null : () => adapter.language,
+    platformLocale: localeBridge
+      ? localeBridge.platformLocale
+      : config.mock ? null : () => adapter.language,
     defaultLocale: config.defaultLocale,
   });
 
@@ -58,6 +66,7 @@ import { resolvePlatformConfig, mockMarker } from './platform/config.js';
       setAdMuted: (on) => game && game.audio.setAdMuted(on),
     },
   });
+  if (localeBridge) localeBridge.attach(platform, locale); // ready 后自动档重解析平台语言
 
   game = new Game();
   game.locale = locale;              // 触屏控件构造时自动接同一实例（touch.js 接线路径 1）
