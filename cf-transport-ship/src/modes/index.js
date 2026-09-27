@@ -1,12 +1,19 @@
 // 模式适配器注册表（纯数据/函数，node 可测）
 // 每个模式提供：开局参数、结束判定、胜者判定与开局提示；game.js 依赖这些钩子而非硬编码规则。
 
+import { CATALOGS } from '../i18n/catalogs.js';
+
+// 缺省翻译（与 HUD 的 zhT 同一模式）：直接取中文目录，与历史输出逐字一致；
+// toast 的第二参传入 LocaleService.t 形状即切换语言，不另存第二套硬编码字符串。
+const interp = (text, params) => (params ? text.replace(/\{(\w+)\}/g, (m, n) => (params[n] != null ? String(params[n]) : m)) : text);
+const zhT = (k, params) => interp(CATALOGS.zh && CATALOGS.zh[k] !== undefined ? CATALOGS.zh[k] : k, params);
+
 export const MODES = {
   tdm: {
     id: 'tdm',
     name: '团队竞技',
     defaults: { goal: 50, time: 600, respawn: 4.0 },
-    toast: (goal) => `团队竞技 · 率先达到 <b style="color:#f5b321">${goal}</b> 击杀的队伍获胜`,
+    toast: (goal, t) => (t || zhT)('mode.tdm.toast', { goal }),
     checkEnd: (score, goal) => score.BL >= goal || score.GR >= goal,
     result: (score, my) => {
       const other = my === 'BL' ? 'GR' : 'BL';
@@ -20,7 +27,7 @@ export const MODES = {
     name: '爆破模式',
     defaults: { time: Infinity, respawn: null },
     scoreKills: false,
-    toast: () => `爆破模式 · 5v5 固定阵营，先赢 <b style="color:#f5b321">7</b> 回合获胜`,
+    toast: (_goal, t) => (t || zhT)('mode.bomb.toast'),
     checkEnd: () => false, // 对局结束由 matchEnded 事件驱动，与击杀无关
     result: (score, my) => {
       const other = my === 'BL' ? 'GR' : 'BL';
@@ -35,7 +42,7 @@ export const MODES = {
     id: 'practice',
     name: '练习模式',
     defaults: { time: Infinity, respawn: 2.0 },
-    toast: () => `练习模式 · 无敌军威胁，<b style="color:#f5b321">4</b> 号键轮换投掷物，靶场随意练枪`,
+    toast: (_goal, t) => (t || zhT)('mode.practice.toast'),
     checkEnd: () => false,
     result: () => null,
   },

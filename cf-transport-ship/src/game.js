@@ -4,7 +4,7 @@ import { Renderer } from './render.js';
 import { buildTextures } from './textures.js';
 // 纯解析函数来自 registry（无 three/资产依赖，node 可导入）；地图构建器含浏览器纹理资产，
 // 在唯一使用点惰性动态导入，避免静态链把 .png 拉进 node 模块图
-import { getMapDescriptor, resolveMapId, inSpawnZone } from './maps/registry.js';
+import { getMapDescriptor, resolveMapId, inSpawnZone, mapDisplayKeys } from './maps/registry.js';
 import { getMode } from './modes/index.js';
 import { BombSession } from './modes/bomb-session.js';
 import { PracticeRuntime } from './modes/practice-runtime.js';
@@ -22,6 +22,8 @@ import { SmokeCloud, computeFlashEffect } from './combat/grenade-effects.js';
 import { createProfileService } from './profile/service.js';
 import { createProfileAdapter } from './profile/adapter.js';
 import { CATALOG } from './profile/equipment.js';
+import { rankKeyAt } from './profile/rank.js';
+import { CATALOGS } from './i18n/catalogs.js';
 import { acquireStorage } from './settings.js';
 import { Player } from './player.js';
 import { Bot, BOT_NAMES } from './bots.js';
@@ -29,8 +31,18 @@ import { TouchControls } from './touch.js';
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const MULTI = ['', '', 'DOUBLE KILL', 'TRIPLE KILL', 'MULTI KILL', 'ULTRA KILL', 'RAMPAGE', 'UNSTOPPABLE', 'GODLIKE'];
-const MULTI_CN = ['', '', '双杀', '三杀', '四杀', '五杀', '六杀！', '无人能挡', '超神'];
-const BOMB_REASON_CN = { timeout: '时间到', exploded: 'C4 引爆', defused: 'C4 被拆除', grWiped: '歼灭保卫者', blWiped: '歼灭潜伏者' };
+// 爆破回合结束原因 → 翻译键（目录缺键时回退原始 reason 字符串）
+const BOMB_REASON_KEYS = {
+  timeout: 'bomb.reason.timeout',
+  exploded: 'bomb.reason.exploded',
+  defused: 'bomb.reason.defused',
+  grWiped: 'bomb.reason.grWiped',
+  blWiped: 'bomb.reason.blWiped',
+};
+// 缺省翻译（与 HUD 的 zhT 同一模式）：直接取中文目录，与历史输出逐字一致；
+// 注入 LocaleService 后 t() 即切换语言，不另存第二套硬编码字符串。
+const interp = (text, params) => (params ? text.replace(/\{(\w+)\}/g, (m, n) => (params[n] != null ? String(params[n]) : m)) : text);
+const zhT = (k, params) => interp(CATALOGS.zh && CATALOGS.zh[k] !== undefined ? CATALOGS.zh[k] : k, params);
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3();
 
 // 释放角色 GPU 独占资源：SkinnedMesh 的 skeleton.boneTexture 由渲染器首帧惰性分配
@@ -39,6 +51,26 @@ const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector
 function disposeActorGpu(a) {
   const sk = a.soldier && a.soldier.mesh && a.soldier.mesh.skeleton;
   if (sk && sk.boneTexture && sk.boneTexture.isTexture) sk.boneTexture.dispose();
+}
+
+// 击杀徽章文案（纯函数，node 可测）：text 为双语通用的英文大字横幅（现役风格，zh 亦如此），
+// sub 为当前语言副标。优先级与历史一致：多杀 > 爆头 > 刀杀 > 手雷 > 穿墙 > 普通击杀。
+export function killBadgeText(t, { multi = 1, headshot = false, weaponId = '', wall = false, victimName = '' }) {
+  const kill = t('callout.kill', { name: victimName });
+  const m = Math.min(Math.max(1, multi | 0), 8);
+  if (m >= 2) return { text: MULTI[m], sub: `${t(`callout.multi${m}`)} · ${kill}` };
+  if (headshot) return { text: 'HEADSHOT', sub: `${t('callout.headshot')} · ${kill}` };
+  if (weaponId === 'knife') return { text: 'KNIFE KILL', sub: `${t('callout.knife')} · ${kill}` };
+  if (weaponId === 'he') return { text: 'GRENADE KILL', sub: `${t('callout.grenade')} · ${kill}` };
+  if (wall) return { text: 'WALLBANG', sub: `${t('callout.wallbang')} · ${kill}` };
+  return { text: 'KILL', sub: kill };
+}
+
+// 阵亡提示（纯函数，node 可测）：weapon 为调用方解析好的显示名；无攻击者（自杀/坠落）回退「你阵亡了」
+export function killedByText(t, { attackerName = '', attackerTeam = 'GR', weapon = '', headshot = false }) {
+  if (!attackerName) return t('hud.dead');
+  const name = `<span style="color:${attackerTeam === 'BL' ? '#ff9b70' : '#8cc8ff'}">${attackerName}</span>`;
+  return t(headshot ? 'callout.killedByHead' : 'callout.killedBy', { name, weapon });
 }
 
 // 感知接线层机器人：在 Bot 既有视线判定外叠加烟雾遮挡（唯一接缝 smokeBlocksSight 语义）
@@ -62,7 +94,33 @@ export class Game {
     this.score = { BL: 0, GR: 0 };
     this.bomb = null; this.bombSession = null; this.c4 = null; this.tick = 0;
     this.audio = audio;
+    this.localeService = null; // Task 11 接线：setLocaleService 注入；缺省回退中文目录
     this.qs = new URLSearchParams(location.search);
+  }
+  // ================= 本地化（Task 10 / US-02） =================
+  // 注入点（Task 11 接线契约）：主控创建 createGameLocale()（src/i18n/index.js）后，
+  // 在 game.init() 之前调用 game.setLocaleService(locale)。语言切换为即时取词：
+  // 战斗播报/报点/结算文案在产生时用 game.t 取当前语言，无需订阅重绘。
+  setLocaleService(service) {
+    this.localeService = service && typeof service.t === 'function' ? service : null;
+  }
+  // 当前语言取词：未注入语言服务时回退中文目录（zhT 与历史输出逐字一致），旧调用安全
+  t(key, params) {
+    return this.localeService ? this.localeService.t(key, params) : zhT(key, params);
+  }
+  // 缺键回退：目录未覆盖的键返回 fallback（避免把键名本身渲染给玩家）
+  tf(key, params, fallback) {
+    const v = this.t(key, params);
+    return v === key ? fallback : v;
+  }
+  // 武器显示名：稳定 ID 不变，译文走 weapon.<id>.name；目录外 id 回退武器表原名
+  weaponName(id) {
+    return WEAPONS[id] ? this.tf(`weapon.${id}.name`, null, WEAPONS[id].name) : id;
+  }
+  // 军衔显示名：level（1 起算）→ 稳定档位键；越界回退档案里的中文 rankName
+  rankName(level, fallback) {
+    const key = rankKeyAt((level | 0) - 1);
+    return key ? this.t(`rank.${key}.name`) : fallback;
   }
   async init() {
     this.hud = new HUD(this);
@@ -80,19 +138,19 @@ export class Game {
     });
     this.hud.setMapInfo(this.mapDesc);
     this.hud.show('loading');
-    this.hud.loading(0.05, '初始化渲染器');
+    this.hud.loading(0.05, this.t('load.step.renderer'));
     await nextFrame();
     this.renderer = new Renderer(document.getElementById('c'), this.opts.quality);
     this.renderer.camera.fov = this.opts.fov;
-    this.hud.loading(0.12, '生成集装箱 / 甲板 / 船体纹理');
+    this.hud.loading(0.12, this.t('load.step.textures'));
     await nextFrame(); await nextFrame();
     this.T = buildTextures(this.opts.quality);
-    this.hud.loading(0.55, this.mapDesc.loadingLabel);
+    this.hud.loading(0.55, this.tf(mapDisplayKeys(mapId).loading, null, this.mapDesc.loadingLabel));
     await nextFrame();
     this.world = new World();
     const { MAP_BUILDERS } = await import('./maps/index.js'); // 惰性加载：仅真正建图时才触及纹理资产
     this.map = (MAP_BUILDERS[mapId] || MAP_BUILDERS['transport-ship'])(this.renderer.scene, this.T, this.world);
-    this.hud.loading(0.68, this.mapDesc.env?.ocean === false ? '天空与光照' : '天空与海洋');
+    this.hud.loading(0.68, this.t(this.mapDesc.env?.ocean === false ? 'load.step.envSky' : 'load.step.envOcean'));
     await nextFrame();
     // 环境配置来自地图描述；阴影体积缺省时由可玩边界推导（运输船在注册表里显式给出以保留船体效果）
     const envOpts = { ...this.mapDesc.env };
@@ -108,7 +166,7 @@ export class Game {
     const ambientAt = this.mapDesc.ambientKey ? this.map[this.mapDesc.ambientKey] : null;
     if (ambientAt) this.fx.initAmbient(ambientAt);
     this.vm = new ViewModel(this.renderer.vmScene, this.T, this.opts.team);
-    this.hud.loading(0.8, '构建导航');
+    this.hud.loading(0.8, this.t('load.step.nav'));
     await nextFrame();
     // 共享导航：图导航图走高度感知寻路，运输船由适配层保持原 NavGrid 行为
     this.nav = createNavigation(this.world, this.mapDesc, this.map);
@@ -116,13 +174,13 @@ export class Game {
     this.navNodes = new Map();
     if (this.map.navGraph) for (const n of this.map.navGraph.nodes) this.navNodes.set(n.id, n);
     this.hud.buildRadar(this.world, this.mapDesc);
-    this.hud.loading(0.88, '武器图标 / 预编译着色器');
+    this.hud.loading(0.88, this.t('load.step.icons'));
     await nextFrame();
     this.hud.setIcons(this.makeIcons());
     this.lampLights();
     this.renderer.camera.position.set(-20, 12, 30); this.renderer.camera.lookAt(0, 2, 0);
     try { this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera); } catch (e) { /* 忽略 */ }
-    this.hud.loading(1, '完成');
+    this.hud.loading(1, this.t('load.step.done'));
     await nextFrame();
     this.hud.show('menu');
     document.addEventListener('pointerlockchange', () => this.onLockChange());
@@ -142,7 +200,8 @@ export class Game {
       this.renderer.scene.add(l);
     }
   }
-  // 玩家当前所处报点区域（来自地图 regions：id/name + XZ/Y 范围），用于小地图标签
+  // 玩家当前所处报点区域（来自地图 regions：id/name + XZ/Y 范围），用于小地图标签。
+  // 返回 region 对象（id 稳定不变）；显示名经 regionName 走翻译键。
   regionAt(pos) {
     const rs = this.map && this.map.regions;
     if (!rs) return null;
@@ -151,9 +210,18 @@ export class Game {
       if (e.x0 === undefined || e.x1 === undefined || e.z0 === undefined || e.z1 === undefined) continue;
       if (pos.x < e.x0 || pos.x > e.x1 || pos.z < e.z0 || pos.z > e.z1) continue;
       if (e.y0 !== undefined && (pos.y < e.y0 - 0.6 || pos.y > (e.y1 ?? e.y0) + 2.6)) continue;
-      return r.name || r.id;
+      return r;
     }
     return null;
+  }
+  // 报点显示名：译文走 map.<mapId>.region.<regionId>；目录未覆盖的图/区域回退注册表原值
+  regionName(region) {
+    if (!region) return null;
+    return this.tf(`map.${this.mapDesc.id}.region.${region.id}`, null, region.name || region.id);
+  }
+  // 地图显示名/加载文案：公开平台图走 map.<id>.name / .loading 翻译键（mapDisplayKeys），回退注册表原值
+  mapName() {
+    return this.tf(mapDisplayKeys(this.mapDesc.id).name, null, this.mapDesc.name);
   }
   makeIcons() {
     const r = this.renderer.renderer;
@@ -327,7 +395,7 @@ export class Game {
     const my = o.team, other = my === 'BL' ? 'GR' : 'BL';
     const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
     let id = 0;
-    this.player = new Player(this, { id: id++, name: '我', team: my });
+    this.player = new Player(this, { id: id++, name: this.t('player.self'), team: my });
     // 激活预设是出生装备的权威来源；旧菜单偏好只用于首次档案迁移与降级兜底。
     this.player.primary = this.profileAdapter?.loadout().primary || o.primary || 'ak47';
     this.player.bind(document.getElementById('c'));
@@ -377,7 +445,7 @@ export class Game {
     this.hud.show(null);
     this.lock();
     setTimeout(() => audio.announce('Go go go!'), 400);
-    this.hud.toast(this.mode.toast(this.goal), 3.5);
+    this.hud.toast(this.mode.toast(this.goal, (k, p) => this.t(k, p)), 3.5);
   }
   addTag(b) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 48;
@@ -490,8 +558,8 @@ export class Game {
       p.primary = id; p.inv[0] = new (p.inv[0].constructor)(id); p.inv[0].patternSeed = Math.random() * 6;
       p.slot = 0; p.readyAt = this.time + WEAPONS[id].draw; p.soldier.setWeapon(id);
       this.onSwitch(p); // 统一 vm/切枪音/HUD 槽位/练习运行时（selectWeapon）同步
-      this.hud.toast(`已更换为 ${WEAPONS[id].name}`, 1.5);
-    } else this.hud.toast(`复活后使用 ${WEAPONS[id].name}`, 1.5);
+      this.hud.toast(this.t('hud.weaponEquipped', { weapon: this.weaponName(id) }), 1.5);
+    } else this.hud.toast(this.t('hud.weaponOnRespawn', { weapon: this.weaponName(id) }), 1.5);
     audio.playUI('buy');
   }
   onOption(k, v) {
@@ -531,7 +599,9 @@ export class Game {
       objectiveActions: this.playerObjectiveActions,
     });
     this.lastAward = res;
-    if (res.awarded && res.rankUp) this.hud.toast(`军衔晋升：<b style="color:#f5b321">${res.rank.rankName}</b>（+${res.xp} XP）`, 4);
+    if (res.awarded && res.rankUp) {
+      this.hud.toast(this.t('hud.rankUpToast', { rank: this.rankName(res.rank.level, res.rank.rankName), xp: res.xp }), 4);
+    }
     return res;
   }
 
@@ -603,7 +673,7 @@ export class Game {
           break;
         case 'bombPlanted':
           audio.announce('Bomb has been planted');
-          this.hud.toast(`C4 已安放在 <b style="color:#f5b321">${ev.site}</b> 点`, 3);
+          this.hud.toast(this.t('bomb.plantedSite', { site: `<b style="color:#f5b321">${ev.site}</b>` }), 3);
           if (ev.actorId === (this.player && this.player.id)) this.playerObjectiveActions++;
           break;
         case 'bombDefused':
@@ -624,7 +694,10 @@ export class Game {
         case 'roundEnded':
           this.score = { ...this.bomb.score };
           audio.playUI('roundEnd');
-          this.hud.toast(`回合结束 · <b>${ev.winner === 'BL' ? '潜伏者' : '保卫者'}</b> 胜（${BOMB_REASON_CN[ev.reason] || ev.reason}）`, 3);
+          this.hud.toast(this.t('bomb.roundEndReason', {
+            team: `<b>${this.t(ev.winner === 'BL' ? 'team.bl.name' : 'team.gr.name')}</b>`,
+            reason: BOMB_REASON_KEYS[ev.reason] ? this.t(BOMB_REASON_KEYS[ev.reason]) : ev.reason,
+          }), 3);
           break;
         case 'matchEnded':
           this.endMatch();
@@ -869,22 +942,19 @@ export class Game {
     this.hud.killFeed(att && att !== v ? att : null, v, wid, hs, wall, att === p || v === p);
     if (att === p && v !== p) {
       const m = Math.min(att.multi, 8);
-      let text, sub = `击杀 ${v.name}`;
-      if (m >= 2) { text = MULTI[m]; sub = MULTI_CN[m] + ' · ' + sub; setTimeout(() => audio.announce(MULTI[m].toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) + '!'), 150); }
-      else if (hs) { text = 'HEADSHOT'; sub = '爆头 · ' + sub; setTimeout(() => audio.announce('Headshot!'), 150); }
-      else if (wid === 'knife') { text = 'KNIFE KILL'; sub = '刀杀 · ' + sub; }
-      else if (wid === 'he') { text = 'GRENADE KILL'; sub = '手雷击杀 · ' + sub; }
-      else if (wall) { text = 'WALLBANG'; sub = '穿墙击杀 · ' + sub; }
-      else { text = 'KILL'; }
-      this.hud.badge(text, sub, hs);
+      const badge = killBadgeText((k, params) => this.t(k, params), { multi: m, headshot: hs, weaponId: wid, wall, victimName: v.name });
+      if (m >= 2) setTimeout(() => audio.announce(MULTI[m].toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) + '!'), 150);
+      else if (hs) setTimeout(() => audio.announce('Headshot!'), 150);
+      this.hud.badge(badge.text, badge.sub, hs);
       audio.playKillConfirm(hs);
     }
     if (v === p) {
       p.startDeathCam(att);
       this.vm.setVisible(false);
       audio.setLowHealth(false);
-      const wn = WEAPONS[wid]?.name || wid;
-      this.killedBy = att && att !== v ? `被 <span style="color:${att.team === 'BL' ? '#ff9b70' : '#8cc8ff'}">${att.name}</span> 用 ${wn}${hs ? ' <span style="color:#ff5040">爆头</span>' : ''}击杀` : '你阵亡了';
+      this.killedBy = att && att !== v
+        ? killedByText((k, params) => this.t(k, params), { attackerName: att.name, attackerTeam: att.team, weapon: this.weaponName(wid), headshot: hs })
+        : this.t('hud.dead');
     }
     this.fx.bloodSplat(v.pos);
     if (this.mode.checkEnd(this.score, this.goal)) setTimeout(() => { if (this.playing) this.endMatch(); }, 1200);
@@ -1028,10 +1098,10 @@ export class Game {
       this.fps = Math.round(this.fpsN / this.fpsAcc); this.fpsAcc = 0; this.fpsN = 0;
       const lbl = document.querySelector('#radarWrap .lbl');
       const region = this.player && this.playing ? this.regionAt(this.player.pos) : null;
-      if (lbl) lbl.textContent = `${this.mapDesc.name}${region ? ' · ' + region : ''} · ${this.fps} FPS`;
+      if (lbl) lbl.textContent = `${this.mapName()}${region ? ' · ' + this.regionName(region) : ''} · ${this.fps} FPS`;
       if (this.playing && !this.paused && this.time > 8 && !this.fpsHinted && this.fps < 32 && this.opts.quality !== 'low') {
         this.fpsHinted = true;
-        this.hud.toast('帧率较低：可按 Esc 在主菜单把画质调到「均衡」或「流畅」', 5);
+        this.hud.toast(this.t('hud.fpsHint'), 5);
       }
     }
     // 音频监听者

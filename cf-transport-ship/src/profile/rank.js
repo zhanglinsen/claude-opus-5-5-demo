@@ -15,6 +15,18 @@ export const RANKS = Object.freeze([
   { name: '上校', xp: 32000 },
 ]);
 
+// 军衔档位稳定键（与 RANKS 顺序一一对应）：只用于显示名翻译键 rank.<key>.name（i18n/catalogs.js），
+// 不参与任何持久化——存档只存 xp。RANKS 的中文 name 保持原值，作为缺译文时的回退。
+export const RANK_TIER_KEYS = Object.freeze([
+  'private', 'corporal', 'sergeant', 'staffSergeant', 'secondLieutenant',
+  'firstLieutenant', 'captain', 'major', 'lieutenantColonel', 'colonel',
+]);
+
+// 档位下标 → 稳定键；越界返回 null（调用方回退 RANKS 中文名）
+export function rankKeyAt(index) {
+  return RANK_TIER_KEYS[index] || null;
+}
+
 // 单次竞技结果的计分规则与上限（冻结，作为公开契约）
 export const XP_AWARD = Object.freeze({
   perKill: 10,

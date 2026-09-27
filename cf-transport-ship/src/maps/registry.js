@@ -116,6 +116,18 @@ export const NEW_PLAYER_DEFAULT_MAP = 'desert-grey';
 
 export function getMapDescriptor(id) { return MAPS[id] || null; }
 
+// 公开平台图的显示名走翻译键（中英成对维护在 i18n/catalogs.js）；id 为稳定键，
+// 注册表的 name/en/loadingLabel/menu.blurb 原值保持不动，作为目录缺键时的回退。
+// 战斗逻辑只认 mapId，不硬编码任何显示名。
+export function mapDisplayKeys(id) {
+  return {
+    name: `map.${id}.name`,
+    en: `map.${id}.en`,
+    loading: `map.${id}.loading`,
+    blurb: `map.${id}.blurb`,
+  };
+}
+
 export function firstAvailableMapId() {
   for (const k of Object.keys(MAPS)) if (MAPS[k].available) return k;
   return null;
