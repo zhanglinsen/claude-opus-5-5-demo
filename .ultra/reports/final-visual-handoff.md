@@ -61,3 +61,9 @@ GPU 测量条件披露：主机全程高负载（load 19–48，未安静）。�
 选择性本地提交（源码 + 新增测试 + 本报告；不含临时日志/性能产物/快照/互斥标记），未推送。哈希见会话最终汇报与下方「提交哈希」小节。
 
 （提交哈希由协调器在提交后回填：见 git log。）
+
+## 提交哈希
+
+- `1ba7e44dcf726256251155babb50ba52c2462522` — Finish dual-map visual closeout: podium ring, four rule fixes verified, lazy map import（源码 + 新增测试 + 本报告，2026-09-27，分支 codex/desert-grey，未推送）
+- 前置 WIP 检查点：`7bf6872`（Checkpoint dual-map game and visual work in progress）
+- 本报告哈希回填的后续提交：见 `git log --oneline -2`（若存在第二个仅报告哈希回填的提交）。
