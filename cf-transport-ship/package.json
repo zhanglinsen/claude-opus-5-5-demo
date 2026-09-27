@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs",
+    "build": "node build.mjs --all",
+    "build:offline": "node build.mjs --target=offline",
+    "build:y8": "node build.mjs --target=y8",
+    "build:gamemonetize": "node build.mjs --target=gamemonetize",
     "dev": "node build.mjs --dev && node scripts/serve.mjs",
     "serve": "node scripts/serve.mjs",
     "test": "node --test \"tests/unit/*.test.mjs\"",

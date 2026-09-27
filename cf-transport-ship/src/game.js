@@ -4,7 +4,7 @@ import { Renderer } from './render.js';
 import { buildTextures } from './textures.js';
 // 纯解析函数来自 registry（无 three/资产依赖，node 可导入）；地图构建器含浏览器纹理资产，
 // 在唯一使用点惰性动态导入，避免静态链把 .png 拉进 node 模块图
-import { getMapDescriptor, resolveMapId, inSpawnZone, mapDisplayKeys } from './maps/registry.js';
+import { getMapDescriptor, resolveMapId, inSpawnZone, mapDisplayKeys, firstAvailableMapId } from './maps/registry.js';
 import { getMode } from './modes/index.js';
 import { BombSession } from './modes/bomb-session.js';
 import { PracticeRuntime } from './modes/practice-runtime.js';
@@ -95,6 +95,8 @@ export class Game {
     this.bomb = null; this.bombSession = null; this.c4 = null; this.tick = 0;
     this.audio = audio;
     this.localeService = null; // Task 11 接线：setLocaleService 注入；缺省回退中文目录
+    this.platform = null;      // Task 11 接线：installPlatform 句柄（主控注入；离线可为 null）
+    this.adPaused = false;     // 广告暂停原因（独立于玩家暂停 this.paused，成对 enter/exit）
     this.qs = new URLSearchParams(location.search);
   }
   // ================= 本地化（Task 10 / US-02） =================
@@ -107,6 +109,22 @@ export class Game {
   // 当前语言取词：未注入语言服务时回退中文目录（zhT 与历史输出逐字一致），旧调用安全
   t(key, params) {
     return this.localeService ? this.localeService.t(key, params) : zhT(key, params);
+  }
+  // ================= 平台广告断点（Task 11 / US-05） =================
+  // 仅在自然断点（整场结束 / 返回菜单）请求；进行中重复请求由 session 去重。
+  // 非法断点被 session 的 breaks 策略拒绝，绝不触发平台广告调用。
+  requestPlatformAd(breakpoint) {
+    const session = this.platform && this.platform.session;
+    if (!session) return null;
+    return Promise.resolve().then(() => session.request(breakpoint)).catch(() => null);
+  }
+  // AdSession controls（主控经 installPlatform({ controls }) 注入）：
+  // 广告暂停是独立原因，与玩家暂停（pause 菜单）合并判定，退出后恢复玩家此前状态。
+  isUserPaused() { return !!this.paused; }
+  enterAdPause() { this.adPaused = true; }
+  exitAdPause(wasUserPaused) {
+    this.adPaused = false;
+    // 玩家此前已暂停（wasUserPaused）时保持其暂停：广告期间未改动 paused/HUD 状态，无需恢复动作
   }
   // 缺键回退：目录未覆盖的键返回 fallback（避免把键名本身渲染给玩家）
   tf(key, params, fallback) {
@@ -123,7 +141,9 @@ export class Game {
     return key ? this.t(`rank.${key}.name`) : fallback;
   }
   async init() {
-    this.hud = new HUD(this);
+    // HUD 收到主控注入的同一 LocaleService 实例（main.js: game.setLocaleService(locale)），
+    // 触屏控件经 game.locale 也接同一实例——三处语言状态严格同源
+    this.hud = new HUD(this, { locale: this.localeService });
     this.opts = this.hud.opts;
     if (this.qs.get('q')) this.opts.quality = this.qs.get('q');
     // 地图解析：URL map= 优先，其次已存设置；不可用的地图回退到第一张可用地图
@@ -148,8 +168,9 @@ export class Game {
     this.hud.loading(0.55, this.tf(mapDisplayKeys(mapId).loading, null, this.mapDesc.loadingLabel));
     await nextFrame();
     this.world = new World();
-    const { MAP_BUILDERS } = await import('./maps/index.js'); // 惰性加载：仅真正建图时才触及纹理资产
-    this.map = (MAP_BUILDERS[mapId] || MAP_BUILDERS['transport-ship'])(this.renderer.scene, this.T, this.world);
+    const { getMapBuilders } = await import('./maps/index.js'); // 惰性加载：仅真正建图时才触及纹理资产
+    const MAP_BUILDERS = await getMapBuilders(); // 按编译目标返回本目标集的构建器
+    this.map = (MAP_BUILDERS[mapId] || MAP_BUILDERS[firstAvailableMapId()])(this.renderer.scene, this.T, this.world);
     this.hud.loading(0.68, this.t(this.mapDesc.env?.ocean === false ? 'load.step.envSky' : 'load.step.envOcean'));
     await nextFrame();
     // 环境配置来自地图描述；阴影体积缺省时由可玩边界推导（运输船在注册表里显式给出以保留船体效果）
@@ -535,6 +556,7 @@ export class Game {
     this.vm.setVisible(false);
     if (document.pointerLockElement) document.exitPointerLock();
     this.hud.show('menu');
+    this.requestPlatformAd('menu-return'); // 自然断点：返回菜单（非交战中/回合间）
   }
   toggleLoadout() {
     if (!this.playing) return;
@@ -584,6 +606,7 @@ export class Game {
     audio.announce(win ? 'Mission accomplished' : win === null ? 'Draw' : 'Mission failed');
     if (document.pointerLockElement) document.exitPointerLock();
     this.vm.setVisible(false);
+    this.requestPlatformAd('match-end'); // 自然断点：整场结束（对局已收口，非回合间）
   }
 
   // 每局恰好一次的军衔结算：仅竞技模式（tdm/bomb），练习不调（service 白名单亦兜底拒绝）。
@@ -998,7 +1021,7 @@ export class Game {
     if (dt <= 0) return;
     const R = this.renderer, cam = R.camera;
     this.realTime = (this.realTime || 0) + dt;
-    const active = this.playing && !this.paused;
+    const active = this.playing && !this.paused && !this.adPaused; // 广告期间冻结模拟（输入已锁）
     if (active) this.simulate(dt);
     else if (!this.playing) {
       // 菜单：环绕镜头（参数来自地图描述）

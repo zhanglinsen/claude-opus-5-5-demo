@@ -199,6 +199,58 @@ export const CATALOGS = {
     'map.desert-grey.region.blYard': '潜伏者前院',
     'map.desert-grey.region.backGarden': '后花园',
 
+    // 原创平台图显示名（Task 11 / US-05）：公开平台版只展示原创地图文案，
+    // 不出现原作地图名；id 为稳定键，注册表原值仅作缺键回退
+    'map.platform-desert.name': '赤霞集市',
+    'map.platform-desert.en': 'CHIXIA BAZAAR',
+    'map.platform-desert.loading': '搭建赤霞集市',
+    'map.platform-desert.blurb': '原创平台图「赤霞集市」：横贯中轴的赤水暗渠连接南北两片红沙街区，东北粮仓高台与西南驼队市场为两个包点。进攻方从东南营地出发，防守方驻守西北哨站；平桥、暗渠与高台双坡道构成多线进攻路线。',
+    'map.platform-harbor.name': '雾港码头',
+    'map.platform-harbor.en': 'FOG HARBOR QUAY',
+    'map.platform-harbor.loading': '搭建雾港码头',
+    'map.platform-harbor.blurb': '雾气未散的集装箱码头：中央装卸站台连接两侧港池岸巷，东西吊道与南北箱顶构成三条进攻路线，跨码头龙门吊下是全场最快的直通道。',
+    // 赤霞集市报点（中英成对；region id 与 platform-desert/layout.js regions 一致）
+    'map.platform-desert.region.bridgeGate': '驼门桥',
+    'map.platform-desert.region.bridgeEast': '东渠桥',
+    'map.platform-desert.region.canal': '赤水暗渠',
+    'map.platform-desert.region.granaryRampS': '粮仓南坡',
+    'map.platform-desert.region.granaryRampW': '粮仓西坡',
+    'map.platform-desert.region.granary': '粮仓高台',
+    'map.platform-desert.region.catwalk': '集市棚栈',
+    'map.platform-desert.region.catwalkRamp': '棚栈坡道',
+    'map.platform-desert.region.hallDoorN': '市场北门',
+    'map.platform-desert.region.hallDoorS': '市场南门',
+    'map.platform-desert.region.market': '驼队市场',
+    'map.platform-desert.region.gateLane': '驼门巷',
+    'map.platform-desert.region.granaryLane': '粮仓西巷',
+    'map.platform-desert.region.grSpawn': '保卫者哨站',
+    'map.platform-desert.region.blSpawn': '潜伏者营地',
+    'map.platform-desert.region.palmStreet': '枣椰大道',
+    'map.platform-desert.region.westLane': '西驮道',
+    'map.platform-desert.region.canalTail': '渠尾广场',
+    'map.platform-desert.region.canalHead': '渠首广场',
+    'map.platform-desert.region.northBank': '北渠沿',
+    'map.platform-desert.region.northStrip': '北集场',
+    'map.platform-desert.region.southCourt': '南驮队场',
+    // 雾港码头报点（region id 与 platform-harbor/layout.js REGIONS 一致）
+    'map.platform-harbor.region.blSpawn': '潜伏者出生区',
+    'map.platform-harbor.region.grSpawn': '保卫者出生区',
+    'map.platform-harbor.region.quaySW': '西南岸巷',
+    'map.platform-harbor.region.quayNE': '东北岸巷',
+    'map.platform-harbor.region.shedS': '南货运棚',
+    'map.platform-harbor.region.shedN': '北货运棚',
+    'map.platform-harbor.region.roofS': '南箱顶',
+    'map.platform-harbor.region.roofN': '北箱顶',
+    'map.platform-harbor.region.yardS': '南箱区',
+    'map.platform-harbor.region.yardN': '北箱区',
+    'map.platform-harbor.region.craneSE': '东南吊道',
+    'map.platform-harbor.region.craneNW': '西北吊道',
+    'map.platform-harbor.region.midS': '中场南',
+    'map.platform-harbor.region.midN': '中场北',
+    'map.platform-harbor.region.midW': '中场西',
+    'map.platform-harbor.region.midE': '中场东',
+    'map.platform-harbor.region.dock': '中央站台',
+
     // 设置（暂停页与语言）
     'settings.language': '语言',
     'settings.languageAuto': '自动',
@@ -209,6 +261,7 @@ export const CATALOGS = {
     'load.tip': '小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。',
     'error.storageUnavailable': '本地存档不可用，进度仅本次会话有效',
     'error.loadFailed': '资源加载失败，请刷新重试',
+    'load.fail': '加载失败：{msg}（请使用最新版 Chrome / Edge / Safari）',
 
     // Task 9：HUD 本地化补充键（菜单键位拆分 / 换包说明 / 槽位与观战 / 结算 MVP / 触屏按钮）
     'menu.docTitle': '穿越火线 3D',
@@ -466,6 +519,58 @@ export const CATALOGS = {
     'map.desert-grey.region.blYard': 'Black List Courtyard',
     'map.desert-grey.region.backGarden': 'Back Garden',
 
+    // Original platform maps (Task 11 / US-05): public platform builds show only
+    // original-map copy; brand names of the original game never appear
+    'map.platform-desert.name': 'Chixia Bazaar',
+    'map.platform-desert.en': 'CHIXIA BAZAAR',
+    'map.platform-desert.loading': 'Building Chixia Bazaar',
+    'map.platform-desert.blurb': 'An original frontline map: the Crimson Canal cuts across the middle of two red-sand quarters, with the Granary Deck (northeast) and the Caravan Market (southwest) as bomb sites. Attackers set out from the southeast camp against Defenders holding the northwest outpost; bridges, the canal and the deck ramps form multiple attack routes.',
+    'map.platform-harbor.name': 'Fog Harbor Quay',
+    'map.platform-harbor.en': 'FOG HARBOR QUAY',
+    'map.platform-harbor.loading': 'Building Fog Harbor Quay',
+    'map.platform-harbor.blurb': 'A fog-bound container quay: the central loading dock links the harbor lanes on both sides, with the east/west crane runs and north/south rooftops forming three attack routes — and the gantry crane span is the fastest straight line across the map.',
+    // Chixia Bazaar callouts (paired with zh; region ids match platform-desert/layout.js)
+    'map.platform-desert.region.bridgeGate': 'Camel Gate Bridge',
+    'map.platform-desert.region.bridgeEast': 'East Canal Bridge',
+    'map.platform-desert.region.canal': 'Crimson Canal',
+    'map.platform-desert.region.granaryRampS': 'Granary South Ramp',
+    'map.platform-desert.region.granaryRampW': 'Granary West Ramp',
+    'map.platform-desert.region.granary': 'Granary Deck',
+    'map.platform-desert.region.catwalk': 'Market Rooftop Walk',
+    'map.platform-desert.region.catwalkRamp': 'Rooftop Ramp',
+    'map.platform-desert.region.hallDoorN': 'Market North Gate',
+    'map.platform-desert.region.hallDoorS': 'Market South Gate',
+    'map.platform-desert.region.market': 'Caravan Market',
+    'map.platform-desert.region.gateLane': 'Camel Gate Lane',
+    'map.platform-desert.region.granaryLane': 'Granary West Lane',
+    'map.platform-desert.region.grSpawn': 'Defender Outpost',
+    'map.platform-desert.region.blSpawn': 'Attacker Camp',
+    'map.platform-desert.region.palmStreet': 'Palm Boulevard',
+    'map.platform-desert.region.westLane': 'West Caravan Trail',
+    'map.platform-desert.region.canalTail': 'Canal Tail Plaza',
+    'map.platform-desert.region.canalHead': 'Canal Head Plaza',
+    'map.platform-desert.region.northBank': 'North Canal Bank',
+    'map.platform-desert.region.northStrip': 'North Market Strip',
+    'map.platform-desert.region.southCourt': 'South Caravan Court',
+    // Fog Harbor Quay callouts (region ids match platform-harbor/layout.js REGIONS)
+    'map.platform-harbor.region.blSpawn': 'Attacker Landing',
+    'map.platform-harbor.region.grSpawn': 'Defender Landing',
+    'map.platform-harbor.region.quaySW': 'SW Quay Lane',
+    'map.platform-harbor.region.quayNE': 'NE Quay Lane',
+    'map.platform-harbor.region.shedS': 'South Shed',
+    'map.platform-harbor.region.shedN': 'North Shed',
+    'map.platform-harbor.region.roofS': 'South Rooftop',
+    'map.platform-harbor.region.roofN': 'North Rooftop',
+    'map.platform-harbor.region.yardS': 'South Yard',
+    'map.platform-harbor.region.yardN': 'North Yard',
+    'map.platform-harbor.region.craneSE': 'SE Crane Run',
+    'map.platform-harbor.region.craneNW': 'NW Crane Run',
+    'map.platform-harbor.region.midS': 'Mid South',
+    'map.platform-harbor.region.midN': 'Mid North',
+    'map.platform-harbor.region.midW': 'Mid West',
+    'map.platform-harbor.region.midE': 'Mid East',
+    'map.platform-harbor.region.dock': 'Loading Dock',
+
     // Settings (pause screen and language)
     'settings.language': 'LANGUAGE',
     'settings.languageAuto': 'Auto',
@@ -476,6 +581,7 @@ export const CATALOGS = {
     'load.tip': 'Tip: a crouch jump (crouch then jump) goes higher, and standing on crates lets you climb onto the container second floor.',
     'error.storageUnavailable': 'Local storage unavailable — progress lasts only this session',
     'error.loadFailed': 'Failed to load resources — please refresh',
+    'load.fail': 'Failed to load: {msg} (please use the latest Chrome / Edge / Safari)',
 
     // Task 9: HUD localization additions (menu key rows / loadout note / slots & spectating / MVP / touch buttons)
     'menu.docTitle': 'CrossFire 3D',
@@ -539,3 +645,37 @@ export const CATALOGS = {
     'load.step.done': 'Done',
   },
 };
+
+// 平台公开版的品牌中立覆盖（Task 11 / US-05）：编译目标非 offline 时，
+// createGameLocale 用 withPlatformBranding(CATALOGS) 替换公开可见的原作品牌词
+//（CrossFire / Black List / Global Risk）。只覆盖既有键，键集不变（目录体检仍通过）；
+// 离线版 CATALOGS 原样保留，不侵入旧体验。
+export const PLATFORM_BRAND_OVERRIDE = Object.freeze({
+  zh: Object.freeze({
+    'menu.logo': 'FRONTLINE OPS · 团队竞技',
+    'menu.docTitle': '前线行动 3D',
+    'team.bl.sub': 'Attackers',
+    'team.gr.sub': 'Defenders',
+  }),
+  en: Object.freeze({
+    'menu.logo': 'FRONTLINE OPS · TEAM DEATHMATCH',
+    'menu.docTitle': 'Frontline Ops 3D',
+    'team.bl.name': 'Attackers',
+    'team.gr.name': 'Defenders',
+    'team.bl.sub': 'Offense',
+    'team.gr.sub': 'Defense',
+    'bomb.roundBL': 'Attackers take the round',
+    'bomb.roundGR': 'Defenders take the round',
+    'menu.card.ak47': 'Attacker classic · High damage',
+    'menu.card.m4a1': 'Defender classic · Stable',
+  }),
+});
+
+export function withPlatformBranding(catalogs = CATALOGS, override = PLATFORM_BRAND_OVERRIDE) {
+  const out = {};
+  for (const loc of Object.keys(catalogs)) {
+    const patch = override[loc];
+    out[loc] = patch ? { ...catalogs[loc], ...patch } : { ...catalogs[loc] };
+  }
+  return out;
+}

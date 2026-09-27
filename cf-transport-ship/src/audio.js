@@ -196,6 +196,7 @@ export class AudioSystem {
     this.voices = []; // 活动 voice（受上限约束）
     this.maxVoices = MAX_VOICES;
     this._vol = { master: 0.8, sfx: 0.9, ambient: 0.5, voice: 0.9 };
+    this._adDuck = false; // 广告临时静音层（Task 11）：不写入 _vol / opts.vol，结束即恢复
     this._L = { x: 0, y: 0, z: 0 };
     this._amb = null;
     this._hbOn = false;
@@ -259,6 +260,20 @@ export class AudioSystem {
       if (this._ok()) this._applyVolumes(false);
     } catch (e) {
       this._warn('setVolumes', e);
+    }
+  }
+
+  // 广告临时静音（Task 11 / US-05）：独立于玩家音量的增益层。
+  // 只影响最终 master 输出，_vol 与持久化设置（opts.vol）始终不变；
+  // setVolumes 在静音期间照常更新 _vol，恢复（false）后立即按新值生效。
+  setAdMuted(on) {
+    try {
+      const next = !!on;
+      if (this._adDuck === next) return;
+      this._adDuck = next;
+      if (this._ok()) this._applyVolumes(true);
+    } catch (e) {
+      this._warn('setAdMuted', e);
     }
   }
 
@@ -1260,7 +1275,7 @@ export class AudioSystem {
         node.gain.setTargetAtTime(val, t, 0.03);
       }
     };
-    set(this._master, v.master);
+    set(this._master, this._adDuck ? 0 : v.master);
     set(this._sfx, v.sfx);
     set(this._sfxSend, v.sfx);
     set(this._ambBus, v.ambient);

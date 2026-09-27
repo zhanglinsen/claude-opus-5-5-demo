@@ -1,8 +1,18 @@
 // 地图注册表（纯数据 + 解析函数，不依赖 three / DOM，可在 node 下测试）
 // 每张地图描述：元信息、寻路范围、小地图参数、菜单镜头、AI 常量与换弹出生区判定。
-// 运输船沿用原 buildMap（见 src/map.js）；沙漠灰阶段 2 前仅元数据，available=false。
+// 编译目标（Task 11 / US-05）决定可用地图集：
+//   offline        离线版：旧 desert-grey / transport-ship（保留原体验与原名称）
+//   y8/gamemonetize 平台版：原创 platform-desert / platform-harbor（公开文案走 i18n，
+//                  不出现原作品牌名）；内部稳定 id 不变。
+// esbuild 以 define 注入 __BUILD_TARGET__；Node 测试环境无此全局，回退 offline。
 
-export const MAPS = {
+import { PLATFORM_DESERT_DESCRIPTOR } from './platform-desert/descriptor.js';
+import { PLATFORM_HARBOR_DESCRIPTOR } from './platform-harbor/layout.js';
+
+export const BUILD_TARGET = typeof __BUILD_TARGET__ !== 'undefined' ? __BUILD_TARGET__ : 'offline';
+export const TARGET_SET = BUILD_TARGET === 'offline' ? 'offline' : 'platform';
+
+const ALL_MAPS = {
   'transport-ship': {
     id: 'transport-ship',
     name: '运输船',
@@ -109,10 +119,33 @@ export const MAPS = {
       { id: 'dg-underpass', pos: { x: -14, y: 1.2, z: 4 } },
     ],
   },
+  // 原创平台沙漠图（赤霞集市）：描述符见 platform-desert/descriptor.js，几何惰性加载
+  'platform-desert': PLATFORM_DESERT_DESCRIPTOR,
+  // 原创平台港口图（雾港码头）：描述符来自 platform-harbor/layout.js（独立审核产物）。
+  // 公开简介改用中性文案（原描述符 blurb 含原作阵营名），显示一律走 i18n 目录。
+  'platform-harbor': {
+    ...PLATFORM_HARBOR_DESCRIPTOR,
+    menu: { ...PLATFORM_HARBOR_DESCRIPTOR.menu, blurb: '雾气未散的集装箱码头：中央装卸站台连接两侧港池岸巷，东西吊道与南北箱顶构成三条进攻路线，跨码头龙门吊下是全场最快的直通道。' },
+  },
 };
 
-// 新玩家默认地图（沙漠灰开放前由 resolveMapId 回退到第一张可用地图）
-export const NEW_PLAYER_DEFAULT_MAP = 'desert-grey';
+// 各编译目标可见地图集（顺序即菜单/回退优先级）
+export const MAP_TARGET_SETS = Object.freeze({
+  offline: ['transport-ship', 'desert-grey'],
+  platform: ['platform-desert', 'platform-harbor'],
+});
+
+// 按目标集合过滤地图表（纯函数，node 可测）；未知集合回退 offline
+export function mapsForTarget(target) {
+  const ids = MAP_TARGET_SETS[target === 'offline' ? 'offline' : 'platform'];
+  return Object.fromEntries(ids.filter((id) => ALL_MAPS[id]).map((id) => [id, ALL_MAPS[id]]));
+}
+
+// 当前编译目标的可用地图（HUD 菜单、resolveMapId 均只看到本目标集）
+export const MAPS = mapsForTarget(TARGET_SET);
+
+// 新玩家默认地图：离线版沙漠灰；平台版原创赤霞集市（旧存档/URL 无效时也回退到此）
+export const NEW_PLAYER_DEFAULT_MAP = TARGET_SET === 'platform' ? 'platform-desert' : 'desert-grey';
 
 export function getMapDescriptor(id) { return MAPS[id] || null; }
 
@@ -133,12 +166,18 @@ export function firstAvailableMapId() {
   return null;
 }
 
-// 解析顺序：URL 参数 > 已存设置 > 新玩家默认 > 第一张可用地图；不可用的地图一律跳过
-export function resolveMapId(requested, stored) {
-  for (const c of [requested, stored, NEW_PLAYER_DEFAULT_MAP]) {
-    if (c && MAPS[c] && MAPS[c].available) return c;
+// 解析顺序：URL 参数 > 已存设置 > 新玩家默认 > 第一张可用地图；不可用的地图一律跳过。
+// resolveMapIdIn 为纯函数形态（地图表显式传入），供目标集隔离测试与 resolveMapId 复用。
+export function resolveMapIdIn(maps, requested, stored, defaultMap) {
+  for (const c of [requested, stored, defaultMap]) {
+    if (c && maps[c] && maps[c].available) return c;
   }
-  return firstAvailableMapId();
+  for (const k of Object.keys(maps)) if (maps[k].available) return k;
+  return null;
+}
+
+export function resolveMapId(requested, stored) {
+  return resolveMapIdIn(MAPS, requested, stored, NEW_PLAYER_DEFAULT_MAP);
 }
 
 // 出生区内换背包立即生效（axis: 'x' 运输船左右舷 / 'z' 沙漠灰南北两端）
