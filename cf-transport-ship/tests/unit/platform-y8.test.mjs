@@ -239,6 +239,51 @@ test('Y8 getPlatformLocale：缺 SDK/SDK 抛错返回 null，语言安全回退'
   assert.equal(adapter2.language, 'zh-cn');
 });
 
+// 双轨语义（P1 边界）：合同字段 language 保持内部默认（独立插件消费者不变），
+// 另以 resolvedPlatformLocale / hasPlatformLocale 上报 SDK 真实返回（无则 null/false），
+// 供本游戏 locale bridge 区分"真实平台语言"与内部 fallback。
+test('Y8 resolvedPlatformLocale：只反映 SDK 真实返回，language 合同默认不变', async () => {
+  // 就绪前：信号为 null/false（内部 fallback 不得伪装成真实平台语言）
+  const win0 = makeFakeWindow(); // SDK 永不到达
+  const adapter0 = new Y8PlatformAdapter({
+    window: win0, appId: 'A', gameId: 'G', initTimeoutMs: 10,
+    loadScript: async () => false,
+  });
+  await adapter0.init();
+  assert.equal(adapter0.resolvedPlatformLocale, null);
+  assert.equal(adapter0.hasPlatformLocale, false);
+  assert.equal(adapter0.language, 'zh-cn'); // 合同默认值行为不变
+
+  // SDK 返回 'zh'：信号为原始 'zh'（不做支持集归一化），language 仍归一化 'zh-cn'
+  const win1 = makeFakeWindow();
+  attachSdk(win1, makeFakeSdk({ locale: 'zh' }));
+  const adapter1 = new Y8PlatformAdapter({ window: win1, appId: 'A', gameId: 'G' });
+  await adapter1.init();
+  assert.equal(adapter1.resolvedPlatformLocale, 'zh');
+  assert.equal(adapter1.hasPlatformLocale, true);
+  assert.equal(adapter1.language, 'zh-cn');
+
+  // 抛错/空串：信号保持 null/false，language 内部默认
+  for (const locale of [new Error('locale unavailable'), '']) {
+    const winE = makeFakeWindow();
+    attachSdk(winE, makeFakeSdk({ locale }));
+    const adapterE = new Y8PlatformAdapter({ window: winE, appId: 'A', gameId: 'G' });
+    await adapterE.init();
+    assert.equal(adapterE.resolvedPlatformLocale, null);
+    assert.equal(adapterE.hasPlatformLocale, false);
+    assert.equal(adapterE.language, 'zh-cn');
+  }
+
+  // 未支持语言 'pt'：信号原样上报，language 经支持集归一化落内部默认
+  const win2 = makeFakeWindow();
+  attachSdk(win2, makeFakeSdk({ locale: 'pt' }));
+  const adapter2 = new Y8PlatformAdapter({ window: win2, appId: 'A', gameId: 'G' });
+  await adapter2.init();
+  assert.equal(adapter2.resolvedPlatformLocale, 'pt');
+  assert.equal(adapter2.hasPlatformLocale, true);
+  assert.equal(adapter2.language, 'zh-cn');
+});
+
 test('Y8 destroy：幂等销毁，销毁后不再请求广告', async () => {
   const win = makeFakeWindow();
   const sdk = makeFakeSdk();

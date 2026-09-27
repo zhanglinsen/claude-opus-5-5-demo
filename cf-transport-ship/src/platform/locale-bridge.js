@@ -25,9 +25,13 @@ export function createPlatformLocaleBridge({ getLanguage } = {}) {
   }
   let ready = false;
   return {
-    // 传给 createGameLocale 的 platformLocale（字符串或 () => string 中的函数形态）
+    // 传给 createGameLocale 的 platformLocale（字符串或 () => string 中的函数形态）；
+    // 取词函数可为 () => string|null——空值/非字符串一律按 null（无真实平台语言）
+    // 处理，落到浏览器语言 → 构建默认，绝不把内部 fallback 当平台语言。
     platformLocale() {
-      return ready ? getLanguage() : null;
+      if (!ready) return null;
+      const lang = getLanguage();
+      return typeof lang === 'string' && lang ? lang : null;
     },
     get ready() { return ready; },
     // 平台句柄 ready 后接线；ready 只结算一次，重复 attach 无害。返回 promise 供测试等待。

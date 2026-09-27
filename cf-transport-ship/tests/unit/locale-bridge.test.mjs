@@ -1,11 +1,18 @@
 // 平台语言宿主桥接单测（node --test）：集成审核 P1——Y8 正式 ID 场景下，
 // SDK init 前适配器内部 fallback（'zh-cn'）被当作真实平台语言，浏览器 en 的玩家
 // 初始显示 zh，且 SDK 就绪后平台语言不再触发自动档重解析。
+// P1 后续边界：Y8 SDK ready 成功但 getPlatformLocale 缺失/抛错/返回空时，内部
+// fallback（'zh-cn'）仍会经 adapter.language 泄漏成"平台语言"压过浏览器 en——
+// 适配器新增 resolvedPlatformLocale（SDK 真实返回，无则 null），接线只取该信号。
 // 覆盖（全部走真实接线：Y8PlatformAdapter + installPlatform + createGameLocale + bridge）：
 //   1. SDK 就绪前 platformLocale 为 null，语言落到浏览器（不泄漏内部 fallback）；
 //   2. ready 成功后自动档以真实平台语言重解析并通知订阅者；
 //   3. ready 失败保持浏览器语言，内部 fallback 不外泄；
-//   4. 玩家在 ready 前显式选择的语言不被覆盖。
+//   4. 玩家在 ready 前显式选择的语言不被覆盖；
+//   5. ready 成功但 SDK 无 getPlatformLocale / 抛错 / 返回空：浏览器 en 不被内部
+//      fallback 压过；
+//   6. SDK 返回未支持语言（'pt'）：经语言目录安全回退落到浏览器 en，而非目录
+//      内的 'zh-cn'。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -34,12 +41,16 @@ function makeFakeWindow() {
   };
 }
 
+// locale 传 undefined 表示 SDK 缺 getPlatformLocale 方法（新边界：接口面不完整）
 function makeFakeSdk(locale) {
-  return {
+  const sdk = {
     init() {},
-    async getPlatformLocale() { return locale; },
     showAd() { return Promise.resolve({ breakStatus: 'viewed' }); },
   };
+  if (locale !== undefined) {
+    sdk.getPlatformLocale = async () => locale;
+  }
+  return sdk;
 }
 
 // SDK 已就位（先到路径）：adapter.init() 直接 _startSdk
@@ -50,7 +61,8 @@ function attachSdk(win, sdk) {
   };
 }
 
-// 与 src/main.js 相同的接线（Y8 正式 ID 场景：平台构建默认 en）
+// 与 src/main.js 相同的接线（Y8 正式 ID 场景：平台构建默认 en）；
+// 只取 resolvedPlatformLocale：SDK 真实返回，无真实语言时为 null（内部 fallback 不算数）
 function wireScene({ win, browserLocale = 'en' } = {}) {
   const adapter = new Y8PlatformAdapter({
     window: win,
@@ -58,7 +70,9 @@ function wireScene({ win, browserLocale = 'en' } = {}) {
     gameId: 'game-id',
     initTimeoutMs: 20,
   });
-  const bridge = createPlatformLocaleBridge({ getLanguage: () => adapter.language });
+  const bridge = createPlatformLocaleBridge({
+    getLanguage: () => adapter.resolvedPlatformLocale,
+  });
   const locale = createGameLocale({
     platformLocale: bridge.platformLocale,
     browserLocale,
@@ -125,4 +139,46 @@ test('玩家在 ready 前显式选择的语言不被平台覆盖', async () => {
 
   assert.equal(locale.getLocale(), 'en'); // 平台 zh 不得覆盖显式选择
   assert.equal(locale.getSavedLocale(), 'en'); // 选择保持持久化语义
+});
+
+// 新边界：ready 成功 ≠ 有真实平台语言。SDK 无 getPlatformLocale / 抛错 / 返回空时，
+// 适配器语言仍是内部 fallback（'zh-cn'），接线必须把它当 null 落到浏览器 en。
+test('ready 成功但 SDK 无 getPlatformLocale/抛错/返回空：浏览器 en 不被内部 fallback 压过', async () => {
+  const scenes = [
+    { name: '无 getPlatformLocale', sdk: makeFakeSdk(undefined) },
+    { name: 'getPlatformLocale 抛错', sdk: makeFakeSdk(new Error('locale unavailable')) },
+    { name: '返回空串', sdk: makeFakeSdk('') },
+  ];
+  for (const { name, sdk } of scenes) {
+    const win = makeFakeWindow();
+    attachSdk(win, sdk);
+    const { adapter, bridge, locale, platform } = wireScene({ win });
+
+    await platform.ready;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(platform.ready ? await platform.ready : null, true, name); // ready 成功
+    assert.equal(bridge.ready, true, name);
+    assert.equal(adapter.language, 'zh-cn', name); // 合同现状：内部 fallback 保持
+    assert.equal(bridge.platformLocale(), null, name); // 无真实平台语言 → null
+    assert.equal(locale.getLocale(), 'en', name); // 浏览器 en 生效（修复前此处为 'zh'）
+    assert.equal(locale.t('menu.start'), 'START GAME', name);
+  }
+});
+
+// 未支持语言：resolvedPlatformLocale 原样上报 'pt'，i18n 目录匹配不命中 →
+// 安全回退到浏览器 en，绝不落成目录内的 'zh-cn' 冒充平台语言。
+test('SDK 返回未支持语言 pt：经语言目录安全回退落到浏览器 en 而非 zh-cn', async () => {
+  const win = makeFakeWindow();
+  attachSdk(win, makeFakeSdk('pt'));
+  const { bridge, locale, platform } = wireScene({ win });
+
+  await platform.ready;
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(bridge.ready, true);
+  assert.equal(locale.getLocale(), 'en'); // 修复前此处为 'zh'：'pt'→'zh-cn'→目录命中
+  assert.equal(locale.t('menu.start'), 'START GAME');
 });

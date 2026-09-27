@@ -84,6 +84,7 @@ export class Y8PlatformAdapter {
       ? options.fallback : DEFAULT_FALLBACK_LANGUAGE;
     this._languages = Array.isArray(options.languages) ? options.languages : undefined;
     this._language = normalizeLanguage(options.language, this._fallback, this._languages);
+    this._resolvedLocale = null; // SDK 真实返回的平台语言原始标签（未就绪/无返回为 null）
     this._bus = createEmitter();
     this._sdk = null;
     this._initPromise = null;
@@ -92,6 +93,15 @@ export class Y8PlatformAdapter {
 
   get language() { return this._language; }
   get gameId() { return this._gameId; }
+
+  /**
+   * SDK 真实返回的平台语言原始标签（'zh'/'en'/'pt'…），未经支持集归一化；
+   * SDK 未就绪、getPlatformLocale 缺失/抛错/返回空时为 null——据此区分
+   * "真实平台语言"与内部 fallback（language 合同默认值），供本游戏 locale
+   * bridge 取用；独立插件消费者仍应使用 language。
+   */
+  get resolvedPlatformLocale() { return this._resolvedLocale; }
+  get hasPlatformLocale() { return this._resolvedLocale !== null; }
 
   /** 幂等初始化：就绪发 READY（一次）；SDK 缺失/超时 resolve false，游戏可继续。 */
   init() {
@@ -170,6 +180,7 @@ export class Y8PlatformAdapter {
     }
     const locale = await this.getPlatformLocale();
     if (locale) {
+      this._resolvedLocale = locale; // SDK 真实原始值（支持集外标签也上报，回退交 i18n 目录匹配）
       this._language = normalizeLanguage(locale, this._fallback, this._languages);
     }
     this._bus.emit('ready', { id: this.id, language: this._language });

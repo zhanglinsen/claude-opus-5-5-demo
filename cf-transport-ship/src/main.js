@@ -45,7 +45,14 @@ import { createPlatformLocaleBridge } from './platform/locale-bridge.js';
   // （显式选择不被覆盖，失败保持浏览器/默认）。离线保持离线适配器语言，mock 无平台语言。
   const localeBridge = __BUILD_TARGET__ === 'offline' || config.mock
     ? null
-    : createPlatformLocaleBridge({ getLanguage: () => adapter.language });
+    : createPlatformLocaleBridge({
+      // Y8：SDK ready 但 getPlatformLocale 缺失/抛错/返回空时，适配器 language 仍是
+      // 内部 fallback（'zh-cn'）而非真实平台语言，只取 resolvedPlatformLocale（无则 null）；
+      // GM：language 即构造注入的真实平台语言，直接可用。
+      getLanguage: __BUILD_TARGET__ === 'y8'
+        ? () => adapter.resolvedPlatformLocale
+        : () => adapter.language,
+    });
   const locale = createGameLocale({
     platformLocale: localeBridge
       ? localeBridge.platformLocale
