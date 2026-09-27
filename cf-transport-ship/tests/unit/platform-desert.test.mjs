@@ -81,6 +81,22 @@ test('出生点：数量、有限坐标、界内、落在各自出生区', () =>
   }
 });
 
+// regionAt（game.js）按 regions 数组顺序取首个匹配：出生区若排在 southCourt/northStrip/
+// westLane/palmStreet 等大区域之后，开局报点会被大区域遮蔽。此测试复刻该首匹配语义。
+test('报点首匹配：全部出生点按 regions 顺序命中各自出生区，不被大区域遮蔽', () => {
+  const regionNameAt = (x, z, y = 0) => {
+    for (const r of L.regions) if (inside(r.extents, x, z, y)) return r.name || r.id;
+    return null;
+  };
+  for (const [team, id] of [['BL', 'blSpawn'], ['GR', 'grSpawn']]) {
+    const expected = region(id).name;
+    for (const sp of L.spawns[team]) {
+      assert.equal(regionNameAt(sp.x, sp.z, sp.y), expected,
+        `${team} 出生点 (${sp.x},${sp.z}) 报点应为「${expected}」`);
+    }
+  }
+});
+
 test('导航图完整性：节点/边引用有效、界内、区域存在', () => {
   const ids = L.navGraph.nodes.map((n) => n.id);
   assert.equal(new Set(ids).size, ids.length, '导航节点 id 重复');
