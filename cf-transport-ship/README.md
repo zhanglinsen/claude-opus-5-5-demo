@@ -63,8 +63,8 @@ npm run build:y8         # dist/y8/index.html + y8-package.zip（平台原创双
 npm run build:gamemonetize  # dist/gamemonetize/index.html + gamemonetize-package.zip（同上）
 ```
 
-- 每个构建只含自己的地图集与 SDK：离线版加载运输船/沙漠灰、无任何平台 SDK；y8 版只含 Y8 适配器（`y8sdk`）；gamemonetize 版只含 GameMonetize 适配器（`SDK_GAME_PAUSE`/`SDK_GAME_START`）。
-- **平台 ZIP**：根目录即 `index.html`，整包自包含（JS/CSS/纹理内联），Y8/GM 后台直接上传即可；另含 `README.md`（上传与凭据注入说明）与 `manifest.json`。
+- 每个构建只开放自己的地图集，且只加载目标平台的 SDK：离线版开放运输船/沙漠灰、无平台 SDK；y8 版只含 Y8 适配器（`y8sdk`）；gamemonetize 版只含 GameMonetize 适配器（`SDK_GAME_PAUSE`/`SDK_GAME_START`）。当前平台单文件仍内嵌未开放的经典地图数据；正式公开发布前应剔除并复核素材。
+- **平台 ZIP**：根目录即 `index.html`，整包自包含（JS/CSS/纹理内联），当前仅供本地 mock 验证，取得正式 ID 并完成真实平台验证后才可提交；另含 `README.md`（上传与凭据注入说明）与 `manifest.json`。
 - **mock 标记（重要）**：本仓库不含任何真实平台 ID。未在宿主页注入 `window.__PLATFORM_IDS__ = { appId, gameId }` 时，平台构建以明确 mock 模式运行：`window.__PLATFORM_MOCK__`、`<html data-platform-mock="true">`、`manifest.json` 内 `"mock": true`，广告一律无填充、不发起任何平台 SDK 网络请求。**带 mock 标记的包不得作为正式版提交**；取得正式 Y8 App/Game ID 或 GameMonetize Game ID 后的线上行为仍待真实验证。
 - 构建隔离与 mock 逻辑有单测覆盖（`tests/unit/build-targets.test.mjs`、`platform-*.test.mjs`）。
 
