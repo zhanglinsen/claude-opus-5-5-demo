@@ -122,7 +122,7 @@ export const CATALOGS = {
     'callout.wallbang': '穿墙击杀',
     'callout.headshot': '爆头',
     'callout.killedBy': '被 {name} 用 {weapon} 击杀',
-    'callout.killedByHead': '被 {name} 用 {weapon} 爆头击杀',
+    'callout.killedByHead': '被 {name} 用 {weapon} <span style="color:#ff5040">爆头</span>击杀',
 
     // 爆破模式
     'bomb.planted': 'C4 已安放',
@@ -254,6 +254,8 @@ export const CATALOGS = {
     'hud.weaponEquipped': '已更换为 {weapon}',
     'hud.weaponOnRespawn': '复活后使用 {weapon}',
     'hud.rankUpToast': '军衔晋升：<b style="color:#f5b321">{rank}</b>（+{xp} XP）',
+    'hud.noC4': '未携带 C4',
+    'hud.noGrenade': '没有手雷了',
     'hud.fpsHint': '帧率较低：可按 Esc 在主菜单把画质调到「均衡」或「流畅」',
     'bomb.roundEndReason': '回合结束 · {team} 胜（{reason}）',
     'bomb.reason.timeout': '时间到',
@@ -387,7 +389,7 @@ export const CATALOGS = {
     'callout.wallbang': 'Wallbang kill',
     'callout.headshot': 'HEADSHOT',
     'callout.killedBy': 'Killed by {name} with {weapon}',
-    'callout.killedByHead': 'Headshotted by {name} with {weapon}',
+    'callout.killedByHead': '<span style="color:#ff5040">Headshotted</span> by {name} with {weapon}',
 
     // Bomb mode
     'bomb.planted': 'C4 PLANTED',
@@ -519,6 +521,8 @@ export const CATALOGS = {
     'hud.weaponEquipped': 'Equipped {weapon}',
     'hud.weaponOnRespawn': 'Will use {weapon} on respawn',
     'hud.rankUpToast': 'RANK UP: <b style="color:#f5b321">{rank}</b> (+{xp} XP)',
+    'hud.noC4': 'No C4',
+    'hud.noGrenade': 'Out of grenades',
     'hud.fpsHint': 'Low frame rate: press Esc and lower quality to Medium or Low in the main menu',
     'bomb.roundEndReason': 'Round over · {team} wins ({reason})',
     'bomb.reason.timeout': 'Time up',

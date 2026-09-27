@@ -83,9 +83,35 @@ test('阵亡提示：双语模板 + 攻击者阵营色名牌，无攻击者回�
   const dead = killedByText(zh.t, {});
   assert.equal(dead, '你阵亡了');
   const zhMsg = killedByText(zh.t, { attackerName: 'Bot7', attackerTeam: 'GR', weapon: 'AWM', headshot: true });
-  assert.ok(zhMsg.includes('被 <span style="color:#8cc8ff">Bot7</span> 用 AWM 爆头击杀'), zhMsg);
+  assert.ok(zhMsg.includes('被 <span style="color:#8cc8ff">Bot7</span> 用 AWM <span style="color:#ff5040">爆头</span>击杀'), zhMsg);
+  const enHead = killedByText(en.t, { attackerName: 'Bot7', attackerTeam: 'BL', weapon: 'AWM', headshot: true });
+  assert.ok(enHead.includes('<span style="color:#ff5040">Headshotted</span> by <span style="color:#ff9b70">Bot7</span> with AWM'), enHead);
   const enMsg = killedByText(en.t, { attackerName: 'Bot7', attackerTeam: 'BL', weapon: 'AWM', headshot: false });
   assert.ok(enMsg.includes('Killed by <span style="color:#ff9b70">Bot7</span> with AWM'), enMsg);
+  // 爆头红标只出现在爆头变体；攻击者名牌色沿用阵营逻辑
+  assert.ok(!enMsg.includes('ff5040'), enMsg);
+});
+
+test('C4/手雷 toast：双语键齐全，注入 en 后输出英文提示', () => {
+  assert.equal(zh.t('hud.noC4'), '未携带 C4');
+  assert.equal(zh.t('hud.noGrenade'), '没有手雷了');
+  assert.equal(en.t('hud.noC4'), 'No C4');
+  assert.equal(en.t('hud.noGrenade'), 'Out of grenades');
+  const g = Object.create(Game.prototype);
+  g.localeService = en;
+  assert.equal(g.tf('hud.noC4', null, '未携带 C4'), 'No C4');
+  assert.equal(g.tf('hud.noGrenade', null, '没有手雷了'), 'Out of grenades');
+  g.localeService = null;
+  assert.equal(g.tf('hud.noC4', null, '未携带 C4'), '未携带 C4');
+  assert.equal(g.tf('hud.noGrenade', null, '没有手雷了'), '没有手雷了');
+});
+
+test('player.js 不再硬编码 C4/手雷提示中文（走 hud.noC4 / hud.noGrenade 键）', async () => {
+  const src = await import('node:fs/promises').then((fs) => fs.readFile(new URL('../../src/player.js', import.meta.url), 'utf8'));
+  assert.ok(!src.includes("'未携带 C4'") || src.includes("tf('hud.noC4'"), '未携带 C4 应走本地化键');
+  assert.ok(!src.includes("'没有手雷了'") || src.includes("tf('hud.noGrenade'"), '没有手雷了 应走本地化键');
+  assert.ok(!src.includes("toast('未携带 C4'"), 'toast 不得直接硬编码中文');
+  assert.ok(!src.includes("toast('没有手雷了'"), 'toast 不得直接硬编码中文');
 });
 
 test('模式开局提示：缺省中文（含目标数），注入 en 后走英文键', () => {

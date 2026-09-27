@@ -164,7 +164,7 @@ export class Player extends Actor {
       // 5号槽：携带C4时可选中的虚拟槽
       if (this.consumePressed('Digit5')) {
         if (this.carryingC4) this.setC4(true);
-        else g.hud.toast('未携带 C4', 1);
+        else g.hud.toast(g.tf('hud.noC4', null, '未携带 C4'), 1);
       }
       // 武器
       let sw = null;
@@ -178,7 +178,7 @@ export class Player extends Actor {
         sw = n;
       }
       if (sw !== null && this.c4Selected) this.setC4(false);
-      if (sw !== null && this.inv[sw] && this.inv[sw].def.type === 'grenade' && this.inv[sw].mag <= 0) { g.hud.toast('没有手雷了', 1.2); sw = null; }
+      if (sw !== null && this.inv[sw] && this.inv[sw].def.type === 'grenade' && this.inv[sw].mag <= 0) { g.hud.toast(g.tf('hud.noGrenade', null, '没有手雷了'), 1.2); sw = null; }
       // 爆破交互：安放（按住开火）/ 拆包拾取（E，拆包优先）/ 丢C4（G），只经 objectiveCommand 下发
       const cmds = this.bombInput.update(oview, {
         carrying: this.carryingC4,
