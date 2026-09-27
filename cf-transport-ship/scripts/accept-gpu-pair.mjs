@@ -99,6 +99,16 @@ try {
     await page.waitForFunction(() => window.__game && window.__game.player && window.__game.player.alive, null, { timeout: 120000 });
     // B4：统一排除启动零帧——所有轮次 simTime>=1 才开始采样（否则启动 0 FPS 帧把 P5 打穿）
     await page.waitForFunction(() => window.__game && window.__game.time >= 1, null, { timeout: 60000 }).catch(() => {});
+    // B4：draw calls 钩子——游戏走 EffectComposer（每帧 main+vm 两次 renderer.render），
+    // info.autoReset 帧尾清零导致帧间读取恒 0/1。改为 autoReset=false 单调累计，
+    // 采样点记录累计值，分析端用相邻样本差值求每秒/每帧调用率。
+    await page.evaluate(() => {
+      const r = window.__game?.renderer?.renderer;
+      if (!r || window.__callsHooked) return;
+      r.info.autoReset = false;
+      r.info.reset();
+      window.__callsHooked = true;
+    }).catch(() => {});
     const renderer = await page.evaluate(() => {
       const gl = document.getElementById('c').getContext('webgl2') || document.getElementById('c').getContext('webgl');
       if (!gl) return 'unknown';
@@ -121,7 +131,7 @@ try {
           const info = g.renderer?.renderer?.info;
           return {
             t: +(performance.now() / 1000).toFixed(1), fps: g.fps || 0, quality: g.opts.quality, simTime: +g.time.toFixed(0),
-            calls: info?.render?.calls ?? null, tris: info?.render?.triangles ?? null,
+            callsTotal: info?.render?.calls ?? null, trisTotal: info?.render?.triangles ?? null,
             textures: info?.memory?.textures ?? null, geometries: info?.memory?.geometries ?? null,
           };
         });
@@ -146,7 +156,13 @@ try {
     await ctx.close();
 
     const fps = samples.map((x) => x.fps).sort((a, b) => a - b);
-    const calls = samples.map((x) => x.calls).filter((x) => x != null).sort((a, b) => a - b);
+    // B4：调用率 = 相邻样本累计差 / 间隔秒数（主场景+vm 两遍合计）
+    const callRates = [];
+    for (let k = 1; k < samples.length; k++) {
+      const dC = samples[k].callsTotal - samples[k - 1].callsTotal, dT = samples[k].t - samples[k - 1].t;
+      if (dC >= 0 && dT > 0) callRates.push(dC / dT);
+    }
+    callRates.sort((a, b) => a - b);
     const med = fps[Math.floor(fps.length / 2)];
     const p5 = fps[Math.max(0, Math.floor(fps.length * 0.05))];
     const low = samples.filter((x) => x.fps > 0 && x.fps < 30).length;
@@ -155,8 +171,13 @@ try {
       renderer, samples: samples.length,
       simTimeStart: samples[0]?.simTime, simTimeEnd: samples[samples.length - 1]?.simTime,
       fps: { median: med, p5, max: fps[fps.length - 1], min: fps[0], series: samples.map((x) => x.fps) },
-      drawCalls: calls.length ? { median: calls[Math.floor(calls.length / 2)], min: calls[0], max: calls[calls.length - 1] } : null,
-      trisMedian: (() => { const t = samples.map((x) => x.tris).filter((x) => x != null).sort((a, b) => a - b); return t.length ? t[Math.floor(t.length / 2)] : null; })(),
+      drawCalls: callRates.length ? {
+        perSecondMedian: +callRates[Math.floor(callRates.length / 2)].toFixed(0),
+        perSecondMin: +callRates[0].toFixed(0), perSecondMax: +callRates[callRates.length - 1].toFixed(0),
+        note: 'main+vm 两遍合计；perFrameApprox = perSecondMedian / medianFps',
+        perFrameApprox: med > 0 ? +((callRates[Math.floor(callRates.length / 2)]) / med).toFixed(1) : null,
+      } : null,
+      trisTotalEnd: samples[samples.length - 1]?.trisTotal ?? null,
       texturesMemory: samples[samples.length - 1]?.textures ?? null,
       geometriesMemory: samples[samples.length - 1]?.geometries ?? null,
       frameMsMedian: med > 0 ? +(1000 / med).toFixed(1) : null,
