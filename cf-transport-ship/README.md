@@ -54,6 +54,20 @@
 - `src/settings.js` — 版本化设置存取与迁移：旧 `cf_ship_opts`（v1，无版本）迁移为 `cf_opts_v2`，保留灵敏度/音量/画质/武器偏好。
 - 小地图、菜单标题/简介、雷达标签、报点区域、加载文案、菜单镜头、AI 常量均随地图描述切换；机器人 AI 对非对称地图（沙漠灰）按 `teamGoals` 阵营目标选路，对对称地图（运输船）保留镜像分路。
 
+## 构建目标（offline | y8 | gamemonetize）
+
+```bash
+npm run build            # 三目标一次全出（offline + y8 + gamemonetize）
+npm run build:offline    # 仅 dist/index.html（离线单文件，经典双图，中文默认）
+npm run build:y8         # dist/y8/index.html + y8-package.zip（平台原创双图，英语默认）
+npm run build:gamemonetize  # dist/gamemonetize/index.html + gamemonetize-package.zip（同上）
+```
+
+- 每个构建只含自己的地图集与 SDK：离线版加载运输船/沙漠灰、无任何平台 SDK；y8 版只含 Y8 适配器（`y8sdk`）；gamemonetize 版只含 GameMonetize 适配器（`SDK_GAME_PAUSE`/`SDK_GAME_START`）。
+- **平台 ZIP**：根目录即 `index.html`，整包自包含（JS/CSS/纹理内联），Y8/GM 后台直接上传即可；另含 `README.md`（上传与凭据注入说明）与 `manifest.json`。
+- **mock 标记（重要）**：本仓库不含任何真实平台 ID。未在宿主页注入 `window.__PLATFORM_IDS__ = { appId, gameId }` 时，平台构建以明确 mock 模式运行：`window.__PLATFORM_MOCK__`、`<html data-platform-mock="true">`、`manifest.json` 内 `"mock": true`，广告一律无填充、不发起任何平台 SDK 网络请求。**带 mock 标记的包不得作为正式版提交**；取得正式 Y8 App/Game ID 或 GameMonetize Game ID 后的线上行为仍待真实验证。
+- 构建隔离与 mock 逻辑有单测覆盖（`tests/unit/build-targets.test.mjs`、`platform-*.test.mjs`）。
+
 ## 命令
 
 ```bash
@@ -62,9 +76,19 @@ npm run dev              # 开发构建 + 本地静态服务 http://127.0.0.1:87
 npm test                 # 单元测试（node:test，注册表/设置迁移/模式适配器）
 npm run test:e2e         # 真实浏览器 e2e（playwright-core + 本机 Chrome，HTTP 与 file://）
 npm run test:e2e:desert  # 沙漠灰集成验收（路线物理走通/地标截图/运输船冒烟）
+node scripts/accept-platform-browser.mjs   # 平台扩展定向验收：三构建双语/mock/触屏/广告断点冒烟
+node scripts/accept-gpu-pair.mjs --out <file.json> --roots '<json>' --runs '<json>'  # 同机 GPU FPS 配对测量（1080p，含负载采样）
 ```
 
-URL 参数：`?map=transport-ship|desert-grey`（优先于已存设置）、`?q=low|medium|high`（画质）、`?autostart=1`（跳过菜单，测试用）、`?nolock=1`（不锁定指针，测试用）。
+本地验平台构建需 HTTP（SDK 约定）：`npm run serve` 后访问 `http://127.0.0.1:8787/y8/index.html` 与 `/gamemonetize/index.html`；离线版可直接 `file://` 打开 `dist/index.html`。
+
+URL 参数：`?map=transport-ship|desert-grey`（离线版）/ `?map=platform-desert|platform-harbor`（平台版，优先于已存设置）、`?q=low|medium|high`（画质）、`?autostart=1`（跳过菜单，测试用）、`?nolock=1`（不锁定指针，测试用）、`?touch=1`（强制触屏控件）。
+
+### 平台原创双图（Y8 / GameMonetize 版）
+
+- **赤霞集市 Chixia Bazaar**（`platform-desert`）：原创红沙街区，赤水暗渠纵贯，粮仓高台（A）与驼队市场（B）为包点；默认爆破，亦支持团队竞技/练习。
+- **雾港码头 Fog Harbor Quay**（`platform-harbor`）：原创集装箱码头，龙门吊与栈桥多层结构；默认团队竞技，亦支持练习。
+- 两张图与经典图无共享品牌或标志性外观，几何/碰撞/导航/包区为原创实现（`src/maps/platform-desert/`、`src/maps/platform-harbor/`），两平台构建内容相同。
 
 测试约定：`window.__game.fastForward(seconds)` 为仅测试使用的模拟推进接口；e2e 证据（截图/结果 JSON）输出到 `artifacts/`（已 gitignore）。
 
@@ -84,6 +108,6 @@ src/
   weapons.js     武器数值    effects.js 特效    audio.js 程序化音效
   env.js         天空/海洋/光照    textures.js 程序纹理    hud.js HUD 与菜单
   settings.js    设置版本迁移    touch.js 触屏
-scripts/         serve.mjs 静态服务；e2e.mjs / e2e-desert.mjs 浏览器测试
+scripts/         serve.mjs 静态服务；e2e.mjs / e2e-desert.mjs 浏览器测试；accept-platform-browser.mjs 平台验收；accept-gpu-pair.mjs GPU 测量
 tests/unit/      node:test 单元测试
 ```
