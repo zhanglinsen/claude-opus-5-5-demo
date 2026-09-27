@@ -6,9 +6,21 @@
 
 ## 模型与初始档位
 
-- **Workbuddy 初始模型选 `GLM-5.3-Flash`；若可选推理档位，选 High。**它负责协调、V/P 两路初步排查、明确的小修及针对性自测。今晚 23:00 前先核对实时额度；额度为零时不要反复请求模型。
-- **`GLM-5.3 MAX` 指旗舰模型 `glm-5.3` 加 `--effort max`，不是 Flash 的另一个档位。**只在两路证据收束后，用全新只读 CLI 上下文做独立视觉与性能方法审核。若旗舰实时额度不可用，明确记录未执行，不得把 Flash 的自审标为 MAX 独立审核。必要时用一次 GPT-6 Sol high 的只读聚焦终验替代。
-- Sol high 是最后一道聚焦复核，Flash 不得自己宣布已完成独立终验；Astra low 不承担本任务的视觉/性能终验。不要把两个 MAX 会话或多个 Sol 会话作为默认配置。
+- **Workbuddy 初始模型选 `GLM-5.3-Flash`；若可选推理档位，选 High。整个 Workbuddy 会话保持该模型，不要求也不假设 Workbuddy 能自动切换。**它负责协调、V/P 两路初步排查、明确的小修及针对性自测。今晚 23:00 前先核对实时额度；额度为零时不要反复请求模型。
+- **`GLM-5.3 MAX` 指旗舰模型 `glm-5.3` 加 `--effort max`，不是 Flash 的另一个档位。**两路证据收束后，在 Workbuddy 终端以 `zcode-kit` 启动一个**独立 CLI 进程**，不要切换当前 Workbuddy 会话模型。将完整审查提示保存为 `.ultra/dispatch/workbuddy-final-max-review-prompt.md`，然后运行：
+
+  ```bash
+  zcode-kit run claude-code -- --model glm-5.3 --effort max -p --output-format stream-json --verbose < .ultra/dispatch/workbuddy-final-max-review-prompt.md > .ultra/dispatch/logs/workbuddy-final-max-review.jsonl
+  ```
+
+  审核提示须要求只读、独立结论、逐项列证据；先确认实时旗舰额度，额度为零则不要调用，也不得把 Flash 自审标为 MAX 审核。如果 Workbuddy 无法执行本地 CLI，先把提示文件写好并停在该交接点，向用户提供这条手动命令。
+- GPT-6 Sol high 若用于最后聚焦复核，也从 Workbuddy 终端启动**独立 `codex exec` 只读进程**，不切换当前会话模型；调用至多一次。将聚焦提示保存为 `.ultra/dispatch/workbuddy-final-sol-review-prompt.md`，然后运行：
+
+  ```bash
+  codex exec -m gpt-6-sol -s read-only -c 'model_reasoning_effort="high"' --json -o .ultra/reports/workbuddy-final-sol-review.md - < .ultra/dispatch/workbuddy-final-sol-review-prompt.md > .ultra/dispatch/logs/workbuddy-final-sol-review.jsonl
+  ```
+
+  若 CLI 不能执行，同样只生成提示文件和手动命令。Astra low 不承担本任务的视觉/性能终验。不要把两个 MAX 会话或多个 Sol 会话作为默认配置。
 
 ## 事实与目标
 
