@@ -17,7 +17,7 @@ export class Actor {
     this.inv = []; this.slot = 0; this.lastSlot = 1; this.readyAt = 0;
     this.stats = { k: 0, d: 0, hs: 0, shots: 0, hits: 0 };
     this.streak = 0; this.lastKillT = -99; this.multi = 0;
-    this.radarT = 0; this.ping = 20 + ((Math.random() * 40) | 0);
+    this.radarT = 0;
     this.primary = 'ak47';
     this.soldier = new Soldier(team);
     game.renderer.scene.add(this.soldier.root);
@@ -25,6 +25,10 @@ export class Actor {
     this.lastHurt = -99; this.lastAttacker = null;
     this.walk = false;
     this.pendingThrow = 0;
+    // 闪光致盲公开状态（Game.flashbang 写入，HUD/AI 消费）：until 为 game.time 时点
+    this.blindUntil = 0; this.blindIntensity = 0;
+    // 投掷物背包：bag 顺序即 CATALOG（he/flash/smoke），used 记账防轮换复制
+    this.grenadeBag = []; this.grenadeId = 'he'; this.usedGrenades = {};
   }
   get weapon() { return this.inv[this.slot]; }
   eye(out) { return out.set(this.pos.x, this.pos.y + this.eyeH, this.pos.z); }
@@ -32,22 +36,35 @@ export class Actor {
     const p = this.pitch + this.punchP, y = this.yaw + this.punchY;
     return out.set(-Math.sin(y) * Math.cos(p), Math.sin(p), -Math.cos(y) * Math.cos(p));
   }
-  giveLoadout(primary) {
+  giveLoadout(primary, grenades) {
     this.primary = primary || this.primary;
-    this.inv = [new WeaponState(this.primary), new WeaponState('deagle'), new WeaponState('knife'), new WeaponState('he')];
+    // 投掷物背包：Game 侧按档案 loadout + 装备目录组合注入；缺省回退 HE（兼容旧测试）
+    this.grenadeBag = Array.isArray(grenades) && grenades.length ? grenades.slice() : ['he'];
+    this.usedGrenades = {};
+    this.inv = [new WeaponState(this.primary), new WeaponState('deagle'), new WeaponState('knife'), this.makeGrenadeState(this.grenadeBag[0])];
+    this.grenadeId = this.grenadeBag[0];
     for (const w of this.inv) w.patternSeed = Math.random() * 6;
     this.slot = 0; this.lastSlot = 1;
     this.readyAt = this.game.time + 0.3;
     this.soldier.setWeapon(this.primary);
   }
+  // 投掷物剩余量：mag = count - 已投数（轮换回到已投过的型号时不得复制出新雷）
+  makeGrenadeState(id) {
+    const w = new WeaponState(id);
+    const used = this.usedGrenades[id] || 0;
+    w.mag = Math.max(0, (w.def.count || 1) - used);
+    w.reserve = 0;
+    return w;
+  }
   spawn(sp) {
-    // 出生高度来自地图契约（sp.y 为站立面）；旧地图数据缺失时安全回退
-    this.pos.set(sp.x, sp.y ?? 0.02, sp.z); this.vel.set(0, 0, 0);
+    // 出生高度来自地图契约（sp.y 为站立面）；数据缺失时回退地图注册表的 spawnYFallback
+    this.pos.set(sp.x, sp.y ?? this.game.mapDesc?.spawnYFallback ?? 0.02, sp.z); this.vel.set(0, 0, 0);
     this.yaw = sp.yaw; this.pitch = 0; this.punchP = this.punchY = 0;
     this.hp = 100; this.armor = 100; this.alive = true; this.deadT = 0;
     this.crouch = false; this.height = STAND_H; this.eyeH = EYE_STAND;
     this.protectT = 3; this.onGround = true;
-    this.giveLoadout(this.nextPrimary || this.primary);
+    this.blindUntil = 0; this.blindIntensity = 0;
+    this.giveLoadout(this.nextPrimary || this.primary, this.spawnGrenades);
     this.soldier.reset();
     this.soldier.root.position.copy(this.pos);
     this.soldier.root.visible = !this.isPlayer;
@@ -120,14 +137,17 @@ export class Actor {
       if (this.stepDist > 2.3) { this.stepDist = 0; g.onFootstep(this); }
     }
     void wasGround;
-    // 防卡死：掉出世界
-    if (this.pos.y < -3) { this.pos.y = 0.1; this.vel.set(0, 0, 0); }
+    // 防卡死：掉出世界（killY 来自地图配置；回退到该图出生面高度）
+    const killY = this.game.mapDesc?.killY ?? -3;
+    if (this.pos.y < killY) { this.pos.y = this.game.mapDesc?.spawnYFallback ?? 0.1; this.vel.set(0, 0, 0); }
   }
   // 武器逻辑。inp: {fire, firePressed, alt, altPressed, reload, sw}
   weaponUpdate(dt, inp) {
     const g = this.game, now = g.time;
-    // 切枪
-    if (inp.sw !== undefined && inp.sw !== null && inp.sw !== this.slot && this.inv[inp.sw]) {
+    // 切枪；持弹时再按 4 号键在投掷物背包内轮换（he/flash/smoke，剩余量>0 才可换）
+    if (inp.sw === 3 && this.slot === 3 && this.pendingThrow <= 0 && !this.autoSwitchAt) {
+      this.cycleGrenade();
+    } else if (inp.sw !== undefined && inp.sw !== null && inp.sw !== this.slot && this.inv[inp.sw]) {
       const tgt = this.inv[inp.sw];
       if (!(tgt.def.type === 'grenade' && tgt.mag <= 0)) {
         this.weapon.reloadUntil = 0;
@@ -178,6 +198,8 @@ export class Actor {
         if (this.pendingThrow <= 0) {
           g.throwGrenade(this);
           w.mag = 0;
+          this.usedGrenades[w.def.id] = (this.usedGrenades[w.def.id] || 0) + 1;
+          this.advanceGrenade(); // 弹已出手：槽位自动转到下一种剩余投掷物（4 号键可再轮换）
           this.readyAt = now + 0.4;
           this.autoSwitchAt = now + 0.45;
         }
@@ -217,6 +239,40 @@ export class Actor {
       if (this.scoped) { this.reScope = this.scoped; this.scoped = 0; this.scopeReady = false; }
     }
     if (w.mag === 0 && w.canReload() && !this.isPlayer) this.startReload();
+  }
+  // 投掷物轮换：从当前位置起找下一种还有剩余的型号；没有则保持不动
+  cycleGrenade() {
+    const bag = this.grenadeBag, now = this.game.time;
+    const cur = bag.indexOf(this.grenadeId);
+    for (let k = 1; k <= bag.length; k++) {
+      const id = bag[(cur + k) % bag.length];
+      const remaining = (WEAPONS[id].count || 1) - (this.usedGrenades[id] || 0);
+      if (id === this.grenadeId || remaining <= 0) continue;
+      this.grenadeId = id;
+      this.inv[3] = this.makeGrenadeState(id);
+      this.inv[3].patternSeed = Math.random() * 6;
+      this.readyAt = now + this.inv[3].def.draw;
+      this.soldier.setWeapon(id);
+      this.game.onSwitch(this);
+      return true;
+    }
+    return false;
+  }
+  // 出手后自动转到下一种剩余投掷物（若当前型号已用尽）
+  advanceGrenade() {
+    const w = this.inv[3];
+    if (w && w.mag > 0) return;
+    const bag = this.grenadeBag;
+    const cur = bag.indexOf(this.grenadeId);
+    for (let k = 1; k <= bag.length; k++) {
+      const id = bag[(cur + k) % bag.length];
+      const remaining = (WEAPONS[id].count || 1) - (this.usedGrenades[id] || 0);
+      if (remaining <= 0) continue;
+      this.grenadeId = id;
+      this.inv[3] = this.makeGrenadeState(id);
+      this.inv[3].patternSeed = Math.random() * 6;
+      return;
+    }
   }
   startReload() {
     const w = this.weapon;

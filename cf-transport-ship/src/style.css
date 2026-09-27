@@ -110,6 +110,59 @@ body.lk #clinks{opacity:.22}
 #scope .v2{position:absolute;left:calc(50% - 1.5px);width:3px;background:#000;height:34%;bottom:0}
 #scope .dot{position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;border-radius:50%;background:#e02010}
 
+/* ---------- 爆破目标 HUD ---------- */
+#objInfo{position:absolute;top:66px;left:50%;transform:translateX(-50%);display:flex;gap:16px;align-items:baseline;font-size:12.5px;color:var(--hudDim);letter-spacing:1px;text-shadow:0 1px 2px #000}
+#objInfo #objRound{font-family:var(--num);font-size:15px;color:var(--hud);letter-spacing:2px}
+#objInfo #objAlive b{font-family:var(--num);font-size:16px;color:var(--hud)}
+#c4State{position:absolute;top:94px;left:50%;transform:translateX(-50%);font-size:15px;font-weight:700;letter-spacing:2px;text-shadow:0 1px 3px #000;padding:3px 16px;background:rgba(5,8,12,.62);border-radius:2px;white-space:nowrap}
+#c4State.carry{color:var(--accent)}
+#c4State.enemy{color:var(--bad)}
+#c4State.dropped{color:var(--bl2)}
+#c4State.planted{color:#ff5040;animation:pulse 1s infinite}
+#objHint{position:absolute;left:50%;top:57%;transform:translateX(-50%);font-size:17px;color:#ffd24a;letter-spacing:1px;text-shadow:0 1px 3px #000;white-space:nowrap}
+#objProg{position:absolute;left:50%;top:62%;transform:translateX(-50%);width:250px;height:10px;background:rgba(5,8,12,.72);border:1px solid rgba(255,255,255,.28);border-radius:2px}
+#objProg i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),#ff5040);transition:width .1s linear}
+#objProg span{position:absolute;left:0;right:0;top:-20px;text-align:center;font-size:13px;color:#fff;text-shadow:0 1px 2px #000}
+#slotC4{position:absolute;left:14px;bottom:78px;display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.45);padding:3px 12px;font-size:12px;opacity:.85}
+#slotC4 span{font-family:var(--cn)}
+#slotC4 b{font-family:var(--num);font-size:14px;color:var(--accent)}
+#slotC4.on{opacity:1;background:rgba(245,179,33,.25);box-shadow:inset 3px 0 0 var(--accent)}
+
+/* ---------- 闪光白屏（s.blind 消费；pointer-events:none 不拦截任何游戏输入） ---------- */
+#blind{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:30}
+/* P3-4（产品裁定）：暂停菜单可读性优先——白屏期间打开暂停时菜单绘制在白屏之上，恢复后白屏继续衰减 */
+#pause{z-index:40}
+
+/* ---------- 投掷物背包条（slot 3 轮换/剩余量，当前高亮） ---------- */
+#nadeInfo{position:absolute;left:14px;bottom:112px;display:flex;gap:5px}
+#nadeInfo span{display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.45);padding:3px 10px;font-size:12px;opacity:.5}
+#nadeInfo span.on{opacity:1;background:rgba(245,179,33,.25);box-shadow:inset 3px 0 0 var(--accent)}
+#nadeInfo b{font-family:var(--num);color:var(--accent);font-weight:700}
+
+/* ---------- 练习面板（非练习模式隐藏；按钮供触屏/菜单态换枪） ---------- */
+#practice{position:absolute;left:14px;bottom:142px;background:var(--panel);border:1px solid rgba(255,255,255,.14);padding:8px 10px;max-width:320px;font-size:12px}
+#practice .ph{display:flex;gap:12px;align-items:baseline;margin-bottom:6px}
+#practice .ph b{letter-spacing:2px;color:var(--accent)}
+#practice .ph span{color:var(--hudDim)}
+#practice #prWeapon{color:var(--hud);font-family:var(--num);letter-spacing:1px}
+#prTargets{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+#prTargets i{font-style:normal;background:rgba(255,255,255,.08);padding:2px 6px;font-family:var(--num);opacity:.65}
+#prTargets i.on{background:rgba(255,80,64,.4);opacity:1;box-shadow:inset 0 0 0 1px #ff5040}
+#prGuns{display:flex;flex-wrap:wrap;gap:4px}
+#prGuns button{pointer-events:auto;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);color:#dfe4e8;font-size:11px;padding:3px 8px;cursor:pointer}
+#prGuns button.on{border-color:var(--accent);color:#fff;background:rgba(245,179,33,.2)}
+
+/* ---------- 菜单军衔档案 / 结算军衔行 ---------- */
+#rankRow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+#rankName{font-family:var(--num);font-size:16px;letter-spacing:2px;color:var(--accent)}
+#rankLevel{font-family:var(--num);font-size:13px;color:var(--hudDim)}
+.rankBar{flex:1;height:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18)}
+.rankBar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),#ffd257)}
+#rankXp{font-size:11px;color:var(--hudDim);font-family:var(--num);white-space:nowrap}
+#presetSeg button{min-width:86px}
+#endAward{text-align:center;margin:10px 0 2px;font-family:var(--num);font-size:18px;letter-spacing:2px;color:var(--accent)}
+#endAward.hidden{display:none}
+
 /* ---------- 计分板 ---------- */
 #board{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(880px,94vw);background:var(--panel2);border:1px solid rgba(255,255,255,.12);padding:14px 16px;backdrop-filter:blur(6px)}
 #board h3{margin:0 0 10px;font-size:15px;letter-spacing:2px;color:var(--hudDim);display:flex;justify-content:space-between}

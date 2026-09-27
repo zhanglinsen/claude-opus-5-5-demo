@@ -16,6 +16,24 @@ export const PRESETS = {
     exposure: 0.7, fog: 0xd49a78, fogDensity: 0.0013,
     deep: 0x0a1c2c, shallow: 0x2a4a58, skyZen: 0x3a4f78, skyHor: 0xf2a070, cloudLit: 0xffc08a, cloudShade: 0x5a4a58, cloudCover: 0.5,
   },
+  // 陆地（沙漠灰）日照档：高角度暖色主光 + 沙色地面反照，压低云量、地平线染沙尘。
+  // 灰白墙 albedo≈0.85，主光压在 3.0 以内：保证受光面辐射 < bloom 阈值 3.2（高档无泛白）
+  // 且 ACES 后留高光余量；hemi/env 低于海图以拉开露天/洞内（B 洞上下层、桥下）明暗对比，洞内由灯具补光。
+  // 视觉整合波（visual-integrate）：hemiSky/envInt 兜底暖化——中和冷色半球光与蓝天环境反射在
+  // 背光面留下的残蓝（lane M 实测 R−B≈−30），目标背光面 |R−B|≤15。
+  // elev/azim 与注册表 env.sunElev/sunAzim 一致（注册表值优先，此处为兜底）。
+  desertDay: {
+    elev: 55, azim: 115, turbidity: 3.2, rayleigh: 1.6, mie: 0.0022, mieG: 0.8,
+    sunColor: 0xfff4e2, sunInt: 3.0, hemiSky: 0xe8e2d0, hemiGround: 0x8a7c64, hemiInt: 0.12, envInt: 0.30,
+    exposure: 0.55, fog: 0xc7bba2, fogDensity: 0.0012, skyGain: 0.5,
+    deep: 0x6a5a40, shallow: 0xa08a60, skyZen: 0x4a7fc0, skyHor: 0xd8ccae, cloudLit: 0xfff6ea, cloudShade: 0x9a9284, cloudCover: 0.3,
+  },
+  desertDusk: {
+    elev: 8, azim: 250, turbidity: 8, rayleigh: 2.6, mie: 0.005, mieG: 0.85,
+    sunColor: 0xffb070, sunInt: 2.4, hemiSky: 0xe0a880, hemiGround: 0x4a3a30, hemiInt: 0.14, envInt: 0.35,
+    exposure: 0.62, fog: 0xd8a878, fogDensity: 0.0014, skyGain: 0.45,
+    deep: 0x2a2018, shallow: 0x6a4a34, skyZen: 0x3a4a70, skyHor: 0xf0a870, cloudLit: 0xffc890, cloudShade: 0x5a4a50, cloudCover: 0.42,
+  },
 };
 
 const NOISE_GLSL = /* glsl */`
@@ -208,13 +226,27 @@ function makeClouds(preset) {
 export class Environment {
   constructor(renderer, scene, quality, opts = {}) {
     this.renderer = renderer; this.scene = scene;
+    this.envOpts = opts; // 地图配置：ocean/shadowBox/sunElev/sunAzim/fogColor/groundColor 等
     this.preset = PRESETS.day;
     this.sky = new Sky(); this.sky.scale.setScalar(40000);
     this.sky.material.depthWrite = false;
     this.sky.renderOrder = -3;
+    // 天空 HDR 增益：Sky 输出的是物理辐亮度；沙漠档用 skyGain 把可见天空压回
+    // 蓝色观感。E 波 bloom 阈值根治（render.js threshold 3.2→8）后从保守值 0.25 回调到
+    // 0.5（dusk 0.45）：天空不再依赖低增益压 bloom，与过曝安全保持平衡。
+    this.skyGain = { value: 1 };
+    this.sky.material.onBeforeCompile = (shader) => {
+      shader.uniforms.uSkyGain = this.skyGain;
+      shader.fragmentShader = 'uniform float uSkyGain;\n' + shader.fragmentShader.replace(
+        'gl_FragColor = vec4( texColor, 1.0 );',
+        'gl_FragColor = vec4( texColor * uSkyGain, 1.0 );',
+      );
+    };
     scene.add(this.sky);
     this.clouds = makeClouds(this.preset); scene.add(this.clouds);
-    this.ocean = makeOcean(this.preset); scene.add(this.ocean);
+    // 非海图（沙漠灰）不创建海面，避免海面/船速效果泄漏
+    this.ocean = opts.ocean !== false ? makeOcean(this.preset) : null;
+    if (this.ocean) scene.add(this.ocean);
     this.sunDir = new THREE.Vector3();
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
     this.sun.castShadow = true;
@@ -234,39 +266,61 @@ export class Environment {
     this.apply('day');
   }
   apply(name) {
-    const P = this.preset = PRESETS[name] || PRESETS.day;
-    const phi = THREE.MathUtils.degToRad(90 - P.elev), theta = THREE.MathUtils.degToRad(P.azim);
+    // 陆地地图（ocean=false 的沙漠灰）把 day/dusk 映射到沙漠日照档；
+    // 海图保持原预设。显式传入 desertDay/desertDusk 也直接生效。
+    const mapped = this.envOpts.ocean === false && (name === 'day' || name === 'dusk')
+      ? 'desert' + name[0].toUpperCase() + name.slice(1)
+      : name;
+    const P = this.preset = PRESETS[mapped] || PRESETS[name] || PRESETS.day;
+    const O = this.envOpts;
+    // 地图可覆盖太阳高度/方位（沙漠等陆地地图与海面日照方向不同）
+    const elev = O.sunElev ?? P.elev, azim = O.sunAzim ?? P.azim;
+    const phi = THREE.MathUtils.degToRad(90 - elev), theta = THREE.MathUtils.degToRad(azim);
     // 方位角从 +X 起逆时针到 +Z
     this.sunDir.set(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)).normalize();
     const u = this.sky.material.uniforms;
     u.turbidity.value = P.turbidity; u.rayleigh.value = P.rayleigh;
     u.mieCoefficient.value = P.mie; u.mieDirectionalG.value = P.mieG;
     u.sunPosition.value.copy(this.sunDir);
+    this.skyGain.value = P.skyGain ?? 1;
     this.sun.color.set(P.sunColor); this.sun.intensity = P.sunInt;
     this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 120);
-    // 阴影相机包住整艘可见船体
+    // 阴影相机包住整张地图的可见几何（默认运输船船体；陆地图由 bounds 推导，见 game.init）
+    const SB = this.envOpts.shadowBox;
     const cam = this.sun.shadow.camera;
     const lightM = new THREE.Matrix4().lookAt(this.sun.position, this.sun.target.position, new THREE.Vector3(0, 1, 0));
     const inv = lightM.clone().invert();
     const box = new THREE.Box3();
     const pts = [];
-    for (const x of [-58, 40]) for (const y of [-1, 26]) for (const z of [-15, 15]) pts.push(new THREE.Vector3(x, y, z));
+    for (const x of (SB ? [SB.x0, SB.x1] : [-58, 40]))
+      for (const y of (SB ? [SB.y0, SB.y1] : [-1, 26]))
+        for (const z of (SB ? [SB.z0, SB.z1] : [-15, 15])) pts.push(new THREE.Vector3(x, y, z));
     const lp = new THREE.Vector3();
     for (const p of pts) { lp.copy(p).sub(this.sun.position).applyMatrix4(inv); box.expandByPoint(lp); }
     cam.left = box.min.x; cam.right = box.max.x; cam.bottom = box.min.y; cam.top = box.max.y;
     cam.near = 1; cam.far = -box.min.z + 10;
     cam.updateProjectionMatrix();
     this.hemi.color.set(P.hemiSky); this.hemi.groundColor.set(P.hemiGround); this.hemi.intensity = P.hemiInt;
-    this.scene.fog.color.set(P.fog); this.scene.fog.density = P.fogDensity;
-    const ou = this.ocean.material.uniforms;
-    ou.uSunDir.value.copy(this.sunDir); ou.uSunColor.value.set(P.sunColor).multiplyScalar(P.sunInt / 3);
-    ou.uDeep.value.set(P.deep); ou.uShallow.value.set(P.shallow);
-    ou.uZen.value.set(P.skyZen); ou.uHor.value.set(P.skyHor); ou.uFog.value.set(P.fog); ou.uFogDensity.value = P.fogDensity;
+    // 地图可覆盖雾色/雾密度（沙漠沙尘 vs 海面湿雾）
+    const fogColor = this.envOpts.fogColor ?? P.fog, fogDensity = this.envOpts.fogDensity ?? P.fogDensity;
+    this.scene.fog.color.set(fogColor); this.scene.fog.density = fogDensity;
+    if (this.ocean) {
+      const ou = this.ocean.material.uniforms;
+      ou.uSunDir.value.copy(this.sunDir); ou.uSunColor.value.set(P.sunColor).multiplyScalar(P.sunInt / 3);
+      ou.uDeep.value.set(P.deep); ou.uShallow.value.set(P.shallow);
+      ou.uZen.value.set(P.skyZen); ou.uHor.value.set(P.skyHor); ou.uFog.value.set(fogColor); ou.uFogDensity.value = fogDensity;
+    }
     const cu = this.clouds.material.uniforms;
     cu.uSunDir.value.copy(this.sunDir); cu.uLit.value.set(P.cloudLit); cu.uShade.value.set(P.cloudShade);
-    cu.uCover.value = P.cloudCover; cu.uFog.value.set(P.fog);
+    cu.uCover.value = P.cloudCover; cu.uFog.value.set(fogColor);
     this.renderer.toneMappingExposure = P.exposure;
-    this.buildEnvMap();
+    // 环境图仅在输入变化时重建：init 与 startMatch 会用同一 preset+tod 各调一次 apply，
+    // PMREM 渲染非零开销，逐帧/重复调用直接复用上次结果（性能低垂果实，E 波）。
+    const envKey = [name, O.sunElev, O.sunAzim, O.ocean, O.groundColor].join('|');
+    if (envKey !== this._envKey) {
+      this._envKey = envKey;
+      this.buildEnvMap();
+    }
   }
   buildEnvMap() {
     const envScene = new THREE.Scene();
@@ -274,9 +328,19 @@ export class Environment {
     const u2 = sky2.material.uniforms, u = this.sky.material.uniforms;
     for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) u2[k].value = u[k].value;
     u2.sunPosition.value.copy(this.sunDir);
+    const isOcean = this.envOpts.ocean !== false;
+    // 沙漠档（ocean:false）环境图专用暖染：只作用于 PMREM 输入，可见天空（this.sky）保持蓝天白天。
+    // 高浑浊度 + 低瑞利散射把环境反射中的蓝天成分压成暖灰，收敛背光面残蓝（visual-env-backlit）。
+    if (!isOcean) {
+      u2.turbidity.value = 8.0;
+      u2.rayleigh.value = 0.72;
+    }
     envScene.add(sky2);
-    // 海面近似：深色大圆盘，使环境光下半球偏暗
-    const disk = new THREE.Mesh(new THREE.CircleGeometry(30000, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(this.preset.deep).multiplyScalar(2.2) }));
+    // 地面/海面近似：大圆盘压暗环境光下半球（海图用深水色，陆地图用地面色）
+    const diskColor = new THREE.Color(isOcean ? this.preset.deep : (this.envOpts.groundColor ?? 0x6f6a60))
+      .multiplyScalar(isOcean ? 2.2 : 1.0);
+    if (!isOcean) diskColor.multiply(new THREE.Color(1.02, 1.00, 0.94)); // 地面反弹同步暖化
+    const disk = new THREE.Mesh(new THREE.CircleGeometry(30000, 32), new THREE.MeshBasicMaterial({ color: diskColor }));
     disk.rotation.x = -Math.PI / 2; disk.position.y = -50;
     envScene.add(disk);
     if (this.envRT) this.envRT.dispose();
@@ -288,9 +352,11 @@ export class Environment {
   }
   update(dt, t, camPos) {
     this.shipDist += dt * this.shipSpeed;
-    const ou = this.ocean.material.uniforms;
-    ou.uTime.value = t; ou.uShip.value = this.shipDist; ou.uCam.value.copy(camPos);
-    this.ocean.position.x = 0; this.ocean.position.z = 0;
+    if (this.ocean) {
+      const ou = this.ocean.material.uniforms;
+      ou.uTime.value = t; ou.uShip.value = this.shipDist; ou.uCam.value.copy(camPos);
+      this.ocean.position.x = 0; this.ocean.position.z = 0;
+    }
     const cu = this.clouds.material.uniforms;
     cu.uTime.value = t; cu.uShip.value = this.shipDist;
   }

@@ -52,14 +52,14 @@ const run = async () => {
   const URL_BASE = `http://127.0.0.1:${PORT}/index.html`;
 
   try {
-    // ---- 1. 主流程：菜单 → 点击「开始游戏」→ 对局 → 载具/暂停/继续/退出 ----
-    console.log('1. 主流程（全部经 UI）：Start 按钮 → 出生契约 → 载具 → 暂停/继续 → 机器人击杀/复活 → 退出');
+    // ---- 1. 主流程（运输船）：菜单 → 点击「开始游戏」→ 对局 → 载具/暂停/继续/退出 ----
+    console.log('1. 运输船主流程（全部经 UI）：Start 按钮 → 出生契约 → 载具 → 暂停/继续 → 机器人击杀/复活 → 退出');
     const ctx = await browser.newContext({ viewport: { width: 800, height: 500 } });
-    const page = await newPage(ctx, `${URL_BASE}?nolock=1&q=low`);
+    const page = await newPage(ctx, `${URL_BASE}?map=transport-ship&nolock=1&q=low`);
     await page.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
-    ok('菜单显示地图选择（运输船选中 / 沙漠灰待开放）',
-      await page.$eval('#mapSeg button[data-v=transport-ship]', (b) => b.classList.contains('on')) &&
-      await page.$eval('#mapSeg button[data-v=desert-grey]', (b) => b.disabled), '', 'ui');
+    ok('菜单显示地图选择（URL 指定运输船选中；沙漠灰可选）',
+      await page.$eval('#mapSeg button[data-v=transport-ship]', (b) => b.classList.contains('on') && !b.disabled) &&
+      await page.$eval('#mapSeg button[data-v=desert-grey]', (b) => !b.disabled), '', 'ui');
     await page.click('#btnStart'); // 关键：经真实 Start 控件进入对局
     await waitForPlaying(page);
     ok('点击 #btnStart 后进入对局且玩家存活', true, '', 'ui');
@@ -139,7 +139,7 @@ const run = async () => {
     await ctx2.addInitScript(() => {
       localStorage.setItem('cf_opts_v2', JSON.stringify({ v: 2, primary: 'invalid', sens: 'banana', fov: 1e9, team: 'xx', quality: 'ultra', diff: 'nightmare', goal: -5, size: 99 }));
     });
-    const p2 = await newPage(ctx2, `${URL_BASE}?nolock=1&q=low`);
+    const p2 = await newPage(ctx2, `${URL_BASE}?map=transport-ship&nolock=1&q=low`);
     await p2.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
     const norm = await p2.evaluate(() => ({ ...__game.opts }));
     ok('畸形 v2 设置被归一化', norm.primary === 'ak47' && norm.team === 'BL' && norm.diff === 'normal' && norm.sens === 1 && norm.fov === 100 &&
@@ -157,7 +157,7 @@ const run = async () => {
       const err = () => { throw new DOMException('denied', 'SecurityError'); };
       Object.defineProperty(window, 'localStorage', { value: { getItem: err, setItem: err, removeItem: err, key: err, length: 0 }, configurable: true });
     });
-    const p3 = await newPage(ctx3, `${URL_BASE}?nolock=1&q=low`);
+    const p3 = await newPage(ctx3, `${URL_BASE}?map=transport-ship&nolock=1&q=low`);
     await p3.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
     ok('storage 抛错时菜单仍初始化', await p3.evaluate(() => !!__game.opts && Number.isFinite(__game.opts.sens)), '', 'ui');
     await p3.click('#btnStart');
@@ -165,13 +165,17 @@ const run = async () => {
     ok('storage 抛错时点击 Start 正常开局', true, '', 'ui');
     await ctx3.close();
 
-    // ---- 4. 地图解析：URL 优先 / desert-grey 回退（菜单级，无需开局） ----
+    // ---- 4. 地图解析：URL map=desert-grey 生效并写回设置；未知 id 回退可用地图 ----
     console.log('4. 地图解析');
     const ctx4 = await browser.newContext({ viewport: { width: 640, height: 400 } });
     const p4 = await newPage(ctx4, `${URL_BASE}?map=desert-grey&q=low`);
     await p4.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
     const fb = await p4.evaluate(() => ({ id: __game.mapDesc.id, saved: JSON.parse(localStorage.getItem('cf_opts_v2')).map }));
-    ok('不可用的 desert-grey 回退到运输船并写回设置', fb.id === 'transport-ship' && fb.saved === 'transport-ship', JSON.stringify(fb), 'ui');
+    ok('URL map=desert-grey 解析为沙漠灰并写回设置', fb.id === 'desert-grey' && fb.saved === 'desert-grey', JSON.stringify(fb), 'ui');
+    const p4b = await newPage(ctx4, `${URL_BASE}?map=nonsense&q=low`);
+    await p4b.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
+    const fb2 = await p4b.evaluate(() => __game.mapDesc.id);
+    ok('非法地图 id 回退到第一张可用地图', fb2 === 'transport-ship' || fb2 === 'desert-grey', `id=${fb2}`, 'ui');
     await ctx4.close();
 
     // ---- 5. 旧 cf_ship_opts 设置迁移（菜单级） ----

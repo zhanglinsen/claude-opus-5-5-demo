@@ -1,0 +1,5 @@
+你是上一轮 GLM-5.3-Flash HIGH 自主协调器（会话 ebe9bec6-37aa-4db8-b716-d8858230e8c0）。原六阶段功能和审核已经完成，但用户原始交付要求「尽可能真实的沙漠灰」与「效果和性能兼顾」尚未充分满足：人工核对 `artifacts/accept-gpu-desert-grey.png` 和 A 大/B 点截图，发现可见区域仍像偏蓝白的矩形白模，木门/旧建筑/远景街镇识别不足。请先读取 `.ultra/reports/visual-quality-in-progress.md` 的具体证据、参考和验收要求，然后**持续执行这一视觉补充波次直到完成或真正 BLOCKED**。
+
+继续严格遵守原角色分工：所有产品代码和必要测试由 CLI GLM-5.3-Flash HIGH；新上下文独立 GLM-5.3-Flash MAX 只读审核/复核。你是协调器，计入稳定 3 个并发槽；在文件互斥下可并发参考对照审查、材质和装饰模块工作，但共享地图构建文件串行。保留现有 gameplay/collision/nav/C4/profile/运输船回归基线，优先低成本渲染侧改进；改变可见大型遮挡物须同步真实碰撞并检查路线。避免为了刷 FPS 丢掉地标。中画质 AMD 5500M 1080p 沙漠灰目标 median 60、P5≥55（基线 P5 57）；运输船不回退。实际 GPU 前后截图与指标、10 次重开及最终 ≥600s 真渲染检查是门禁；规则未改时无需重跑 24 回合。必要 TDD/聚焦测试，不做无意义全量重测。
+
+`final-review.md` 和 `final-handoff.md` 保留为六阶段历史审核，不篡改。新报告单独写视觉补充波次和独立 MAX 结论；最终可将 `.ultra/reports/visual-quality-in-progress.md` 改名为 `.ultra/reports/visual-quality-final.md`，并写新的 `.ultra/reports/final-visual-handoff.md`。在完成前不得宣布全部视觉交付。最终报告更正 970922 是 JS 字符串长度而不是字节；当前 dist 实际 UTF-8 为 971261 字节，详见计划文件。禁止 Codex Sol、推送、发布或更改全局配置；不要向用户发消息。遇真正不可解问题写 `.ultra/reports/BLOCKED.md`。

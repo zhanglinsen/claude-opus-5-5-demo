@@ -19,7 +19,11 @@ export const DEFAULT_OPTS = {
   sens: 1.0,
   fov: 78,
   vol: 0.8,
+  mode: null, // null = 跟随地图默认模式（运输船 tdm、沙漠灰 bomb）；对局时 URL ?mode= 优先于已存设置
 };
+
+// 模式合法取值（与 modes/index.js 的 MODES 键一致；菜单模式分段与持久化共用）
+export const ENUMS_MODE = ['tdm', 'bomb', 'practice'];
 
 // 合法取值与数值范围；范围覆盖菜单分段控件并留出合理余量
 const ENUMS = {
@@ -28,6 +32,7 @@ const ENUMS = {
   diff: ['easy', 'normal', 'hard', 'hell'],
   tod: ['day', 'dusk'],
   quality: ['low', 'medium', 'high'],
+  mode: ENUMS_MODE,
 };
 const RANGES = {
   sens: [0.2, 3],

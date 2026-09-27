@@ -1,0 +1,3 @@
+你是原 BombMatch GLM-5.3-Flash HIGH 实现者，继续同一 CLI 会话。只修改 `cf-transport-ship/src/modes/bomb.js`、`cf-transport-ship/tests/unit/bomb-core.test.mjs` 和新报告 `.ultra/reports/bomb-site-contract-fix.md`。其他工作流并行修改地图集成和 AI；不得碰共享文件、跑全量构建/浏览器或提交。不要调用其他模型/子代理。
+
+独立复核发现 `plantAt` 使用 `facts.inSite || true`，会把布尔值 true 存为 `bomb.site`。这可能让接入方误传布尔区域判断后产生未知 site，并令目标型 AI 在守包/回防时崩溃。要求严格契约：`inSite` 必须是非空包点 ID 字符串（当前 A/B），布尔 true 不得开始安包或生成 planted 事件；安包过程中失去合法 site 必须中断。保持原有字符串 A/B 行为和时序。首先增加一条或少量公开 API 失败用例并运行红态，之后最小修复、运行 `node --test tests/unit/bomb-core.test.mjs` 绿态，必要重构仍绿。不要对未知 ID 如 C 做地图验证，BombMatch 不依赖地图元数据，Game 集成方负责提供真实包点 ID。更新文件顶部 facts 契约说明，报告红绿证据。此修复仅是提前收紧核心输入边界，非阶段 3 整体完成。

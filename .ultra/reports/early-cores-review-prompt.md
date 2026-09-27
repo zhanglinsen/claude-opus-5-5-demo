@@ -1,0 +1,11 @@
+# Independent GLM MAX review — completed pure gameplay/profile cores
+
+You are a NEW independent GLM-5.3-Flash MAX reviewer; not the implementer. User replaced Sol with GLM MAX, asked SOLID/SoC/layering, TDD from the change point onward, and necessary tests only. READ ONLY: do not edit/build/browser/commit/delegate. Another worker may concurrently edit map/grenade files: ignore them; the files below are frozen, and no source mutation is permitted. Return full Markdown report as final text, coordinator saves it.
+
+Review these COMPLETED independent cores and focused tests only:
+- src/modes/bomb.js, tests/unit/bomb-core.test.mjs, report .ultra/reports/phase-3-bomb-core-prep.md
+- src/profile/{rank,equipment,repository,service}.js, tests/unit/profile-core.test.mjs, report .ultra/reports/phase-7-profile-core-prep.md
+- src/ai/objective-planner.js, tests/unit/objective-planner.test.mjs, report .ultra/reports/phase-3-objective-ai-prep.md
+Read approved spec Rules/Combat/Profile sections and source. Existing integration still pending; do not claim complete bomb gameplay, rank UI, or AI movement. Report precise implementation blockers before integration: rule edge errors (same-tick resolution, drop/interruption, progress), profile persistence/dedup/rank/equipment validity, AI hidden knowledge/strategy oscillation, API cohesion/inversion/import cycles. Pure tests should prove behavior and not mirror implementation constants. Independently run only the three focused Node test files if needed, not whole suite/browser. Check TDD claims against recorded chronology; first bomb slice used a single module-not-found red for 16 batch tests, so call that out honestly without demanding pointless rewrite of already verified code. Profile/AI should have separate behavior red→green cycles.
+
+Use concise severity-ranked actionable findings with file:line, trigger, impact, and targeted expected fix. State APPROVE or REQUEST_CHANGES for each core and overall early-core gate. Distinguish inspected evidence from independently rerun checks. Future stages/current map are out of scope. Do not demand extra tests without a concrete risk. No user approval question; fixes are authorized through GLM implementer.

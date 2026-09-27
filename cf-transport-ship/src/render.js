@@ -53,7 +53,7 @@ export class Renderer {
   constructor(canvas, quality) {
     this.quality = quality;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
-    r.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'high' ? 1.5 : quality === 'medium' ? 1.15 : 1));
+    r.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'high' ? 1.5 : 1));
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 0.75;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -64,15 +64,20 @@ export class Renderer {
     this.vmScene = new THREE.Scene();
     this.vmCamera = new THREE.PerspectiveCamera(58, 16 / 9, 0.01, 50);
     const size = r.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: quality === 'low' ? 0 : 4 });
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType,
+      samples: quality === 'high' ? 4 : quality === 'medium' ? 2 : 0 });
     this.composer = new EffectComposer(r, rt);
     this.worldPass = new RenderPass(this.scene, this.camera);
     this.vmPass = new RenderPass(this.vmScene, this.vmCamera);
     this.vmPass.clear = false; this.vmPass.clearDepth = true;
     this.composer.addPass(this.worldPass);
     this.composer.addPass(this.vmPass);
-    if (quality !== 'low') {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.14, 0.35, 3.2);
+    if (quality === 'high') {
+      // threshold 8（E 波根治 bloom 渗白）：Sky 输出物理辐亮度（HDR），旧阈值 3.2 时
+      // 亮天空整片进入高亮提取、多级模糊渗满画面（总览视角发白主因，见 phase-4-visual.md §2）。
+      // 8 只保留真正的 HDR 高光（太阳盘/枪口焰/爆炸闪光/海面日光闪斑）；
+      // 均衡档保留材质和阴影，用 2x AA 替代多级泛光以降低双地图的渲染负担。
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.14, 0.35, 8);
       this.composer.addPass(this.bloom);
     }
     this.fx = new ShaderPass(FXShader);

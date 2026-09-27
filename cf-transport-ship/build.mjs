@@ -12,6 +12,7 @@ const res = await esbuild.build({
   target: ['es2020'],
   write: false,
   legalComments: 'none',
+  loader: { '.png': 'dataurl' },
   define: { 'process.env.NODE_ENV': '"production"' },
 });
 const js = res.outputFiles[0].text;

@@ -31,6 +31,15 @@ export class TouchControls {
     btn('R', 40, 250, 50, () => { const p = P(); if (p) p.pressed.add('KeyR'); });
     btn('切', 100, 250, 50, () => { const p = P(); if (p) p.pressed.add('KeyQ'); });
     btn('镜', 40, 60, 60, () => { const p = P(); if (p) { p.mouse.rp = true; } });
+    // 爆破目标交互：C4（5号槽）/ E 拆包拾取（按住）/ G 丢C4；仅爆破模式由 HUD 控制显示
+    this.objBtns = [];
+    const objBtn = (label, right, bottom, size, down, up) => {
+      const b = btn(label, right, bottom, size, down, up);
+      b.style.display = 'none'; this.objBtns.push(b); return b;
+    };
+    objBtn('C4', 160, 150, 54, () => { const p = P(); if (p) p.pressed.add('Digit5'); });
+    objBtn('E', 160, 212, 54, () => { const p = P(); if (p) { p.pressed.add('KeyE'); p.keys.add('KeyE'); } }, () => { const p = P(); if (p) p.keys.delete('KeyE'); });
+    objBtn('G', 222, 155, 50, () => { const p = P(); if (p) p.pressed.add('KeyG'); });
     // 摇杆
     let padId = null, cx = 0, cy = 0, lookId = null, lx = 0, ly = 0;
     window.addEventListener('touchstart', (e) => {

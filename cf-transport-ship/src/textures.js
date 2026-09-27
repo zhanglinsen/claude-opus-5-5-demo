@@ -699,6 +699,7 @@ export const SIGN_UV = {
 // ============== 汇总 ==============
 export function buildTextures(quality = 'high') {
   const T = {};
+  T.quality = quality; // 地图构建器据此选择材质分档（game.js 未向构建器透传 opts）
   T.deck = deckTextures();
 
   // 集装箱（侧面法线在同长度间共享）

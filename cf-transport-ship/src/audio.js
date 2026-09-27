@@ -727,6 +727,45 @@ export class AudioSystem {
     }
   }
 
+  // 闪光弹起爆：锐利高频「啪」+ 明亮短促噪声闪爆 + 高频余振（无碎片隆隆，与 HE 爆炸区分）。
+  // E 波补齐；待 game.js detonate() 的 flash 分支从 playGrenadeBounce 改调本方法（一行接线）。
+  playFlashPop(pos) {
+    if (!this._ok()) return;
+    try {
+      const p = this._pos(pos);
+      const v = this._voice(p, { g: 1.0, ref: 8, roll: 0.9, max: 200, wet: 0.3, air: 0.5 });
+      const t = this._now(), r = jit(0.06);
+      this._nz(v, t, { n: 'white', a: 0.0003, dur: 0.004, g: 0.8, flt: [{ t: 'highpass', f: 3000 * r, q: 0 }] });
+      this._tn(v, t, { f: 900 * r, f1: 300, a: 0.001, dur: 0.09, g: 0.5 });
+      this._nz(v, t, { n: 'white', a: 0.001, dur: 0.18, g: 0.5, flt: [{ t: 'bandpass', f: 5200 * r, q: 0.8 }] });
+      // 致盲耳鸣式的明亮余振（比爆炸的 _ring 短、纯高频）
+      this._metal(v, t + 0.02, 3600 * r, 0.16, [[1, 1, 0.5], [1.9, 0.4, 0.3]]);
+      this._nz(v, t + 0.05, { n: 'pink', a: 0.02, dur: 0.5, g: 0.08, flt: [{ t: 'highpass', f: 1500, q: 0 }] });
+      this._done(v);
+    } catch (e) {
+      this._warn('playFlashPop', e);
+    }
+  }
+
+  // 烟雾弹起爆：罐体低「噗」+ 发烟剂持续嘶声（~1.6s 渐弱），不产生爆压。
+  // E 波补齐；待 game.js detonate() 的 smoke 分支从 playGrenadeBounce 改调本方法（一行接线）。
+  playSmokePop(pos) {
+    if (!this._ok()) return;
+    try {
+      const p = this._pos(pos);
+      const v = this._voice(p, { g: 0.7, ref: 8, roll: 0.9, max: 120, wet: 0.15 });
+      const t = this._now(), r = jit(0.05);
+      this._tn(v, t, { f: 320 * r, f1: 140, a: 0.002, dur: 0.06, g: 0.3 });
+      this._metal(v, t, rand(2100, 2600), 0.1, [[1, 1, 0.1], [2.3, 0.4, 0.06]]); // 罐盖弹开
+      // 嘶声：宽带噪声随时间收窄变闷，电平指数衰减
+      this._nz(v, t + 0.03, { n: 'white', a: 0.004, dur: 0.45, g: 0.32, flt: [{ t: 'bandpass', f: 3800 * r, q: 0.9 }] });
+      this._nz(v, t + 0.1, { n: 'pink', a: 0.01, dur: 1.5, g: 0.22, flt: [{ t: 'bandpass', f: 2400 * r, f1: 900, sw: 1.4, q: 0.8 }] });
+      this._done(v);
+    } catch (e) {
+      this._warn('playSmokePop', e);
+    }
+  }
+
   playExplosion(pos) {
     if (!this._ok()) return;
     try {

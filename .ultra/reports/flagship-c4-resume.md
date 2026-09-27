@@ -1,0 +1,1 @@
+续跑同一任务。上次因 CLI 未配 allowedTools 被主动中断，诊断与文件修改已保留。现在已授权有限的 Bash 命令。请不要使用 `cd ... && ...`、管道或多命令复合 shell；在工作区根目录直接运行 `npm --prefix cf-transport-ship run build`、`node cf-transport-ship/scripts/e2e-bomb.mjs`、`node cf-transport-ship/scripts/accept-restart-check.mjs` 等单个命令。避免重复读取已知大文件。若测试确定只是观察竞态，写清引擎是否存在可见状态不一致，并把浏览器断言做成有意义的稳定状态检查。完成报告。

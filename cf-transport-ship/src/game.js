@@ -4,14 +4,23 @@ import { Renderer } from './render.js';
 import { buildTextures } from './textures.js';
 import { MAP_BUILDERS, getMapDescriptor, resolveMapId, inSpawnZone } from './maps/index.js';
 import { getMode } from './modes/index.js';
+import { BombSession } from './modes/bomb-session.js';
+import { PracticeRuntime } from './modes/practice-runtime.js';
 import { Environment } from './env.js';
-import { World, NavGrid } from './physics.js';
+import { World } from './physics.js';
+import { createNavigation } from './navigation.js';
 import { Effects } from './effects.js';
 import { ViewModel } from './viewmodel.js';
 import { HUD } from './hud.js';
 import { audio } from './audio.js';
 import { WEAPONS, jitterDir } from './weapons.js';
 import { buildGunMerged } from './guns.js';
+import { computeThrowVelocity, GrenadeProjectile } from './combat/projectile.js';
+import { SmokeCloud, computeFlashEffect } from './combat/grenade-effects.js';
+import { createProfileService } from './profile/service.js';
+import { createProfileAdapter } from './profile/adapter.js';
+import { CATALOG } from './profile/equipment.js';
+import { acquireStorage } from './settings.js';
 import { Player } from './player.js';
 import { Bot, BOT_NAMES } from './bots.js';
 import { TouchControls } from './touch.js';
@@ -19,14 +28,37 @@ import { TouchControls } from './touch.js';
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r()));
 const MULTI = ['', '', 'DOUBLE KILL', 'TRIPLE KILL', 'MULTI KILL', 'ULTRA KILL', 'RAMPAGE', 'UNSTOPPABLE', 'GODLIKE'];
 const MULTI_CN = ['', '', '双杀', '三杀', '四杀', '五杀', '六杀！', '无人能挡', '超神'];
+const BOMB_REASON_CN = { timeout: '时间到', exploded: 'C4 引爆', defused: 'C4 被拆除', grWiped: '歼灭保卫者', blWiped: '歼灭潜伏者' };
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3();
+
+// 释放角色 GPU 独占资源：SkinnedMesh 的 skeleton.boneTexture 由渲染器首帧惰性分配
+// （每士兵一张 DataTexture），scene.remove 不触发释放——不补 dispose 会随每局重开
+// 单调泄漏 ~11 张纹理（E 波验收 §3 实测）。材质/几何为共享缓存，无需处理。
+function disposeActorGpu(a) {
+  const sk = a.soldier && a.soldier.mesh && a.soldier.mesh.skeleton;
+  if (sk && sk.boneTexture && sk.boneTexture.isTexture) sk.boneTexture.dispose();
+}
+
+// 感知接线层机器人：在 Bot 既有视线判定外叠加烟雾遮挡（唯一接缝 smokeBlocksSight 语义）
+// 与闪光致盲；bots.js 本体不感知投掷物效果。
+class WiredBot extends Bot {
+  canSee(t) {
+    const g = this.game;
+    if (g.time < (this.blindUntil || 0)) return false; // 被闪光致盲：短暂失明
+    if (g.smokes.length && g.smokeBlocked(this.eye(_v), t.pos)) return false; // 烟雾遮挡视线
+    return super.canSee(t);
+  }
+}
 
 export class Game {
   constructor() {
     this.time = 0; this.frame = 0;
     this.playing = false; this.paused = false; this.locked = false;
     this.actors = []; this.nades = []; this.timers = []; this.tags = [];
+    this.smokes = []; this.practice = null; this.practiceMeshes = [];
+    this.profileAdapter = null; this.matchId = null; this.playerObjectiveActions = 0; this.lastAward = null;
     this.score = { BL: 0, GR: 0 };
+    this.bomb = null; this.bombSession = null; this.c4 = null; this.tick = 0;
     this.audio = audio;
     this.qs = new URLSearchParams(location.search);
   }
@@ -39,6 +71,11 @@ export class Game {
     this.mapDesc = getMapDescriptor(mapId);
     this.opts.map = mapId;
     this.hud.saveOpts();
+    // 本地档案（军衔/装备预设）：guarded localStorage，隐私/配额/损坏自动降级；
+    // legacyPrimary 迁移旧主武器偏好到新档案的默认预设。向下只暴露 adapter。
+    this.profileAdapter = createProfileAdapter({
+      service: createProfileService({ storage: acquireStorage(), legacyPrimary: this.opts.primary }),
+    });
     this.hud.setMapInfo(this.mapDesc);
     this.hud.show('loading');
     this.hud.loading(0.05, '初始化渲染器');
@@ -52,18 +89,29 @@ export class Game {
     await nextFrame();
     this.world = new World();
     this.map = (MAP_BUILDERS[mapId] || MAP_BUILDERS['transport-ship'])(this.renderer.scene, this.T, this.world);
-    this.hud.loading(0.68, '天空与海洋');
+    this.hud.loading(0.68, this.mapDesc.env?.ocean === false ? '天空与光照' : '天空与海洋');
     await nextFrame();
-    this.env = new Environment(this.renderer.renderer, this.renderer.scene, this.opts.quality, this.mapDesc.env);
+    // 环境配置来自地图描述；阴影体积缺省时由可玩边界推导（运输船在注册表里显式给出以保留船体效果）
+    const envOpts = { ...this.mapDesc.env };
+    if (!envOpts.shadowBox && this.mapDesc.bounds) {
+      const B = this.mapDesc.bounds;
+      envOpts.shadowBox = { x0: B.x0 - 4, x1: B.x1 + 4, y0: -3, y1: 26, z0: B.z0 - 4, z1: B.z1 + 4 };
+    }
+    this.env = new Environment(this.renderer.renderer, this.renderer.scene, this.opts.quality, envOpts);
     this.env.extraScenes = [this.renderer.vmScene];
     this.env.apply(this.opts.tod);
     this.fx = new Effects(this.renderer.scene, this.T, this.renderer.camera);
-    this.fx.initAmbient(this.map[this.mapDesc.ambientKey] || this.map.funnelTop);
+    // 船用氛围（烟囱排烟/海鸥）只对提供氛围锚点的地图启用
+    const ambientAt = this.mapDesc.ambientKey ? this.map[this.mapDesc.ambientKey] : null;
+    if (ambientAt) this.fx.initAmbient(ambientAt);
     this.vm = new ViewModel(this.renderer.vmScene, this.T, this.opts.team);
-    this.hud.loading(0.8, '计算寻路网格');
+    this.hud.loading(0.8, '构建导航');
     await nextFrame();
-    const N = this.mapDesc.nav;
-    this.nav = new NavGrid(this.world, N.x0, N.z0, N.x1, N.z1, N.cell, N.agentR);
+    // 共享导航：图导航图走高度感知寻路，运输船由适配层保持原 NavGrid 行为
+    this.nav = createNavigation(this.world, this.mapDesc, this.map);
+    // 导航节点索引（id -> node），供阵营目标/架点选取使用
+    this.navNodes = new Map();
+    if (this.map.navGraph) for (const n of this.map.navGraph.nodes) this.navNodes.set(n.id, n);
     this.hud.buildRadar(this.world, this.mapDesc);
     this.hud.loading(0.88, '武器图标 / 预编译着色器');
     await nextFrame();
@@ -84,12 +132,25 @@ export class Game {
     window.__game = this;
   }
   lampLights() {
-    // 管道内的少量真实点光源
-    for (const p of this.map.lampSpots.slice(0, this.opts.quality === 'low' ? 0 : 4)) {
+    // 地图提供的少量真实点光源（隧道/管道内）
+    for (const p of (this.map.lampSpots || []).slice(0, this.opts.quality === 'low' ? 0 : 4)) {
       const l = new THREE.PointLight(0xffd9a0, 5, 9, 1.8);
       l.position.copy(p);
       this.renderer.scene.add(l);
     }
+  }
+  // 玩家当前所处报点区域（来自地图 regions：id/name + XZ/Y 范围），用于小地图标签
+  regionAt(pos) {
+    const rs = this.map && this.map.regions;
+    if (!rs) return null;
+    for (const r of rs) {
+      const e = r.extents || r.bounds || r;
+      if (e.x0 === undefined || e.x1 === undefined || e.z0 === undefined || e.z1 === undefined) continue;
+      if (pos.x < e.x0 || pos.x > e.x1 || pos.z < e.z0 || pos.z > e.z1) continue;
+      if (e.y0 !== undefined && (pos.y < e.y0 - 0.6 || pos.y > (e.y1 ?? e.y0) + 2.6)) continue;
+      return r.name || r.id;
+    }
+    return null;
   }
   makeIcons() {
     const r = this.renderer.renderer;
@@ -128,26 +189,152 @@ export class Game {
     return out;
   }
 
+  // ================= 投掷物效果 / 烟雾 / 练习 / 档案（纯模块接线层） =================
+  // 出生投掷物背包：玩家按档案预设排最前 + 目录补齐（he/flash/smoke，顺序即 CATALOG）；
+  // bots 只带 he（协调者决策：AI 无投掷型号意识且闪光无队伍豁免，全雷包会造成自闪/自烟漂移）
+  grenadeBagFor(a) {
+    if (!a.isPlayer) return ['he'];
+    const bag = [];
+    if (this.profileAdapter) {
+      for (const id of this.profileAdapter.loadout().grenades) if (!bag.includes(id)) bag.push(id);
+    }
+    for (const id of CATALOG.grenade) if (!bag.includes(id)) bag.push(id);
+    return bag;
+  }
+  // 练习靶体可视网格：立杆 + 靶球（命中判定球与 rt.states 半径一致），受击高亮在 renderFrame 刷新
+  buildPracticeTargets() {
+    const mat = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, roughness: 0.55, metalness: 0.15 });
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x4a4d50, roughness: 0.7, metalness: 0.4 });
+    for (const s of this.practice.states) {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 1.2, 8), poleMat));
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(s.radius, 16, 12), mat.clone());
+      ball.position.y = 1.2;
+      g.add(ball);
+      g.position.set(s.pos.x, s.pos.y - 1.2, s.pos.z); // 杆底落在靶点站立面
+      this.renderer.scene.add(g);
+      this.practiceMeshes.push({ id: s.id, group: g, mat: ball.material });
+    }
+  }
+  destroyPractice() {
+    for (const t of this.practiceMeshes) this.renderer.scene.remove(t.group);
+    this.practiceMeshes = [];
+    this.practice = null;
+  }
+  clearSmokes() {
+    for (const s of this.smokes) this.renderer.scene.remove(s.mesh);
+    this.smokes = [];
+  }
+  // 烟雾视线接缝（语义同 grenade-effects.smokeBlocksSight）：玩家可见性判定与 WiredBot.canSee 共用
+  smokeBlocked(from, to) {
+    for (const s of this.smokes) if (s.cloud.blocksSight(from, to)) return true;
+    return false;
+  }
+  // 几何遮挡（HE/闪光共用约定，与现役 explode 一致：起点抬 0.2、末端留 0.3 皮肤）
+  sightBlocked(from, to) {
+    const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+    const L = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (L < 1e-6) return false;
+    return !!this.world.raycast(from.x, from.y + 0.2, from.z, dx / L, dy / L, dz / L, Math.max(0, L - 0.3), 'bullet');
+  }
+  // 引信事件按 WEAPONS[id].effect 分发（combat 报告契约）
+  detonate(n, p) {
+    const v = new THREE.Vector3(p.x, p.y, p.z);
+    const effect = WEAPONS[n.id]?.effect || 'he';
+    if (effect === 'flash') this.flashbang(v);
+    else if (effect === 'smoke') this.smokeOut(v);
+    else this.explode(v, n.owner);
+  }
+  // 闪光弹：对每个存活角色结算致盲（computeFlashEffect），写 per-actor blindUntil/blindIntensity
+  flashbang(p) {
+    this.fx.light(p, 60, 0.3, 0xffffff, 40);
+    audio.playFlashPop(p); // 专用闪光起爆音效（phase-6 音频 lane 交付）
+    for (const a of this.actors) {
+      if (!a.alive) continue;
+      const r = computeFlashEffect({
+        origin: p,
+        // 观察者按眼位结算（与 explode 的 chestWorld 同理）：腰高掩体不应挡住眼可见的闪光
+        observer: { pos: a.eye(new THREE.Vector3()), viewDir: a.forward(_d), alive: a.alive, spectating: false },
+        isBlocked: (from, to) => this.sightBlocked(from, to),
+      });
+      if (!r.blinded) continue;
+      // 更晚到期的闪光重置 remaining；强度一律取 max——弱闪不得下调既有强致盲
+      a.blindUntil = Math.max(a.blindUntil || 0, this.time + r.duration);
+      a.blindIntensity = Math.max(a.blindIntensity || 0, r.intensity);
+    }
+  }
+  // 烟雾弹：规则体积在 SmokeCloud（grenade-effects 唯一视线接缝），视觉网格由本层同步
+  smokeOut(p) {
+    const cloud = new SmokeCloud({ pos: { x: p.x, y: p.y, z: p.z } });
+    const mesh = new THREE.Mesh(
+      // 视觉半径与 blocksSight 的规则半径一致：视线遮挡外缘不得超出可见烟体
+      new THREE.SphereGeometry(cloud.radius, 18, 14),
+      new THREE.MeshLambertMaterial({ color: 0xc2c4c6, transparent: true, opacity: 0.85, depthWrite: false }),
+    );
+    mesh.position.set(p.x, p.y + 0.9, p.z);
+    mesh.scale.setScalar(0.25);
+    this.renderer.scene.add(mesh);
+    this.smokes.push({ cloud, mesh });
+    audio.playSmokePop(p); // 专用烟雾起爆音效（phase-6 音频 lane 交付）
+  }
+  updateSmokes(dt) {
+    for (let i = this.smokes.length - 1; i >= 0; i--) {
+      const s = this.smokes[i];
+      s.cloud.advance(dt);
+      if (s.cloud.expired()) {
+        this.renderer.scene.remove(s.mesh);
+        this.smokes.splice(i, 1);
+        continue;
+      }
+      const o = s.cloud.opacity();
+      s.mesh.material.opacity = 0.85 * o;
+      s.mesh.scale.setScalar(0.25 + 0.75 * Math.min(1, s.cloud.age / 1.5));
+    }
+  }
+
   // ================= 流程 =================
   startMatch() {
     const o = this.opts;
-    this.mode = getMode(o.mode || this.mapDesc.defaultMode);
+    // 模式解析：URL ?mode= 优先（菜单模式选择 UI 属 HUD lane），其余走地图默认；
+    // 请求模式必须是该图 supportedModes 之一，否则回退默认
+    const supported = Array.isArray(this.mapDesc.supportedModes) ? this.mapDesc.supportedModes : [];
+    const requested = this.qs.get('mode') || o.mode;
+    this.mode = getMode(supported.includes(requested) ? requested : this.mapDesc.defaultMode);
     audio.init(); audio.setVolumes({ master: o.vol }); audio.startAmbient(); audio.playUI('start');
-    for (const a of this.actors) this.renderer.scene.remove(a.soldier.root);
-    for (const t of this.tags) this.renderer.scene.remove(t.sprite);
+    this.endBombSession();
+    this.destroyPractice();
+    this.clearSmokes();
+    for (const a of this.actors) {
+      this.renderer.scene.remove(a.soldier.root);
+      disposeActorGpu(a);
+    }
+    for (const t of this.tags) {
+      this.renderer.scene.remove(t.sprite);
+      // 名牌 CanvasTexture 不 dispose 会随每局重开单调泄漏（acceptance §3）
+      t.sprite.material.map?.dispose();
+      t.sprite.material.dispose();
+    }
     for (const n of this.nades) this.renderer.scene.remove(n.mesh);
     this.actors = []; this.nades = []; this.tags = []; this.timers = [];
     this.score = { BL: 0, GR: 0 };
+    this.matchId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    this.playerObjectiveActions = 0; this.lastAward = null;
     this.goal = o.goal; this.timeLeft = this.mode.defaults.time;
     this.env.apply(o.tod);
     const my = o.team, other = my === 'BL' ? 'GR' : 'BL';
     const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
     let id = 0;
     this.player = new Player(this, { id: id++, name: '我', team: my });
-    this.player.primary = o.primary;
+    // 激活预设是出生装备的权威来源；旧菜单偏好只用于首次档案迁移与降级兜底。
+    this.player.primary = this.profileAdapter?.loadout().primary || o.primary || 'ak47';
     this.player.bind(document.getElementById('c'));
     this.actors.push(this.player);
-    const N = o.size;
+    const N = this.mode.id === 'bomb' ? 5 : this.mode.id === 'practice' ? 0 : o.size; // 爆破固定 5v5，练习无敌军
+    // 练习模式：靶场运行时 + 靶体可视网格（两地图靶点元数据来自注册表）
+    if (this.mode.id === 'practice') {
+      this.practice = new PracticeRuntime({ spots: this.mapDesc.practiceTargets || [] });
+      this.buildPracticeTargets();
+    }
     const prim = (team, i) => {
       if (i === 1 && N >= 4) return 'awm';
       if (i === 3 && N >= 6) return 'mp5';
@@ -157,7 +344,7 @@ export class Game {
     for (const team of [my, other]) {
       const count = team === my ? N - 1 : N;
       for (let i = 0; i < count; i++) {
-        const b = new Bot(this, { id: id++, name: names.pop() || 'Bot' + id, team, diff: o.diff });
+        const b = new WiredBot(this, { id: id++, name: names.pop() || 'Bot' + id, team, diff: o.diff });
         b.primary = prim(team, team === my ? i + 1 : i);
         this.actors.push(b);
         if (team === my) this.addTag(b);
@@ -166,6 +353,23 @@ export class Game {
     for (const a of this.actors) this.spawnActor(a, true);
     this.vm.setTeam(my); this.vm.equip(this.player.weapon.id, 0.6);
     this.hud.slots(this.player.inv, 0);
+    // 练习面板初始武器名与玩家出生主武器一致（只种 current，不占用按钮高亮的槽位语义）
+    if (this.practice) this.practice.current = this.player.weapon.id;
+    // 爆破模式控制器：回合流转/计时/胜负全部在 BombSession（持有纯规则引擎 BombMatch），
+    // Game 只做统一复活与事件/场景协调；首个 spawnAll 由会话 start() 触发
+    if (this.mode.id === 'bomb') {
+      this.bombSession = new BombSession({
+        roster: this.actors.map((a) => ({ id: a.id, team: a.team, name: a.name })),
+        bombSites: this.map.bombSites || [],
+        hooks: {
+          spawnAll: () => this.spawnAllActors(),
+          onEvents: (events) => this.onBombEvents(events),
+        },
+      });
+      this.bomb = this.bombSession.match;
+      this.c4 = this.makeC4Marker();
+      this.bombSession.start();
+    }
     this.playing = true; this.paused = false; this.ended = false;
     this.hud.show(null);
     this.lock();
@@ -203,6 +407,8 @@ export class Game {
       }
       if (sc > bestScore) { bestScore = sc; best = p; }
     }
+    // 出生投掷物背包：档案 loadout 的雷种在前，其余装备目录型号补齐（各自 count 上限内轮换）
+    a.spawnGrenades = this.grenadeBagFor(a);
     a.spawn(best);
     if (a instanceof Bot) a.onSpawn();
     if (a.isPlayer) {
@@ -240,9 +446,19 @@ export class Game {
   }
   quitToMenu() {
     this.playing = false; this.paused = false; this.ended = true;
+    this.endBombSession();
+    this.destroyPractice();
+    this.clearSmokes();
     audio.stopAmbient(); audio.setLowHealth(false);
-    for (const a of this.actors) this.renderer.scene.remove(a.soldier.root);
-    for (const t of this.tags) this.renderer.scene.remove(t.sprite);
+    for (const a of this.actors) {
+      this.renderer.scene.remove(a.soldier.root);
+      disposeActorGpu(a);
+    }
+    for (const t of this.tags) {
+      this.renderer.scene.remove(t.sprite);
+      t.sprite.material.map?.dispose();
+      t.sprite.material.dispose();
+    }
     this.actors = []; this.tags = [];
     this.player = null;
     this.vm.setVisible(false);
@@ -262,16 +478,24 @@ export class Game {
   chooseLoadout(id) {
     const p = this.player;
     p.nextPrimary = id; this.opts.primary = id; this.hud.saveOpts();
+    if (this.profileAdapter) {
+      const active = this.profileAdapter.presets().active;
+      this.profileAdapter.setPresetSlot(active, 'primary', id);
+    }
     const inSpawn = p.alive && inSpawnZone(this.mapDesc, p.team, p.pos);
     if (inSpawn) {
       p.primary = id; p.inv[0] = new (p.inv[0].constructor)(id); p.inv[0].patternSeed = Math.random() * 6;
       p.slot = 0; p.readyAt = this.time + WEAPONS[id].draw; p.soldier.setWeapon(id);
-      this.vm.equip(id, WEAPONS[id].draw); this.hud.slots(p.inv, 0);
+      this.onSwitch(p); // 统一 vm/切枪音/HUD 槽位/练习运行时（selectWeapon）同步
       this.hud.toast(`已更换为 ${WEAPONS[id].name}`, 1.5);
     } else this.hud.toast(`复活后使用 ${WEAPONS[id].name}`, 1.5);
     audio.playUI('buy');
   }
   onOption(k, v) {
+    if (k === 'primary' && this.profileAdapter) {
+      const active = this.profileAdapter.presets().active;
+      this.profileAdapter.setPresetSlot(active, 'primary', v);
+    }
     if (k === 'vol') audio.setVolumes({ master: v });
     if (k === 'fov' && this.renderer) { this.renderer.camera.fov = v; this.renderer.camera.updateProjectionMatrix(); }
     if (k === 'tod' && this.env) this.env.apply(v);
@@ -283,11 +507,127 @@ export class Game {
     this.ended = true; this.playing = false;
     const my = this.player.team;
     const win = this.mode.result(this.score, my);
+    this.awardProfileResult(win);
     this.hud.endScreen(win, this.score, this.actors, this.player.id);
     audio.playUI('roundEnd'); audio.setLowHealth(false);
     audio.announce(win ? 'Mission accomplished' : win === null ? 'Draw' : 'Mission failed');
     if (document.pointerLockElement) document.exitPointerLock();
     this.vm.setVisible(false);
+  }
+
+  // 每局恰好一次的军衔结算：仅竞技模式（tdm/bomb），练习不调（service 白名单亦兜底拒绝）。
+  // key 跨重试稳定且每局唯一；返回值存 lastAward 供结算 HUD 消费（lane 3 契约）。
+  awardProfileResult(win) {
+    if (!this.profileAdapter || !this.player) return null;
+    if (this.mode.id !== 'tdm' && this.mode.id !== 'bomb') return null;
+    const res = this.profileAdapter.awardMatch({
+      key: `${this.mode.id}:${this.matchId}`,
+      mode: this.mode.id,
+      outcome: win === true ? 'win' : win === false ? 'loss' : 'draw',
+      kills: this.player.stats.k,
+      objectiveActions: this.playerObjectiveActions,
+    });
+    this.lastAward = res;
+    if (res.awarded && res.rankUp) this.hud.toast(`军衔晋升：<b style="color:#f5b321">${res.rank.rankName}</b>（+${res.xp} XP）`, 4);
+    return res;
+  }
+
+  // ================= 爆破协调（规则在 BombSession/BombMatch，这里只做场景/音频/公共接口） =================
+  // 丢弃当前会话：断开钩子、移除世界 C4 标记（重开/退回菜单时不得残留事件或计时）
+  endBombSession() {
+    if (this.bombSession) { this.bombSession.destroy(); this.bombSession = null; }
+    this.bomb = null;
+    if (this.c4) { this.renderer.scene.remove(this.c4.root); this.c4 = null; }
+  }
+  spawnAllActors() {
+    for (const a of this.actors) this.spawnActor(a);
+    this.killedBy = null;
+  }
+  // 玩家/机器人共用的目标命令入口（E 拆包/拾取、G 丢包、持包安放、机器人 C4 行为都走这里）。
+  // 纯转发：目标行动 XP 记账只认引擎完成事件（onBombEvents），命令通道不计数（防连点刷分）
+  objectiveCommand(type, actorId, pos) {
+    if (!this.bombSession) return false;
+    return this.bombSession.command(type, actorId, pos);
+  }
+  // 目标视图：可序列化快照 + plantable/defusable/pickupable/inSite 提示；非爆破模式恒为 null
+  objectiveView(actorId) {
+    if (!this.bombSession) return null;
+    return this.bombSession.view(actorId !== undefined ? actorId : (this.player && this.player.id));
+  }
+  // 受控确定性测试钩子（仅 e2e/规则验证脚本使用）：精确摆位角色以验证规则边界；不用于玩法或 AI 证据
+  __bombPlace(actorId, x, y, z) {
+    const a = this.actors.find((t) => t.id === actorId);
+    if (!a) return false;
+    a.pos.set(x, y, z); a.vel.set(0, 0, 0);
+    return true;
+  }
+  makeC4Marker() {
+    const root = new THREE.Mesh(
+      new THREE.BoxGeometry(0.34, 0.14, 0.24),
+      new THREE.MeshStandardMaterial({ color: 0x2c2c2e, roughness: 0.6, metalness: 0.3 }),
+    );
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.06), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+    lamp.position.set(0.09, 0.085, 0);
+    root.add(lamp);
+    root.visible = false;
+    this.renderer.scene.add(root);
+    return { root, lamp };
+  }
+  // 世界 C4 标记：位置与可见性完全来自规则引擎公开状态（dropped/planted），每帧同步
+  syncC4World() {
+    if (!this.c4) return;
+    const b = this.bomb && this.bomb.bomb;
+    const root = this.c4.root;
+    if (b && b.dropped && b.pos) {
+      root.visible = true;
+      root.position.set(b.pos.x, (b.pos.y || 0) + 0.08, b.pos.z);
+    } else if (b && b.planted) {
+      const site = (this.map.bombSites || []).find((s) => s.id === b.site);
+      const p = b.pos || (site ? { x: site.x, y: site.y, z: site.z } : null);
+      if (p) { root.visible = true; root.position.set(p.x, (p.y || 0) + 0.08, p.z); }
+    } else root.visible = false;
+    this.c4.lamp.visible = !!(b && b.planted && Math.sin(this.realTime * 8) > 0);
+  }
+  // 爆破语义事件 → 音频/HUD/特效协调；规则结算本身一次性来自引擎，这里不做二次判定
+  onBombEvents(events) {
+    for (const ev of events) {
+      switch (ev.type) {
+        case 'roundStart':
+          this.score = { ...this.bomb.score };
+          break;
+        case 'phaseLive':
+          audio.announce('Go go go!');
+          break;
+        case 'bombPlanted':
+          audio.announce('Bomb has been planted');
+          this.hud.toast(`C4 已安放在 <b style="color:#f5b321">${ev.site}</b> 点`, 3);
+          if (ev.actorId === (this.player && this.player.id)) this.playerObjectiveActions++;
+          break;
+        case 'bombDefused':
+          audio.announce('Bomb has been defused');
+          if (ev.actorId === (this.player && this.player.id)) this.playerObjectiveActions++;
+          break;
+        case 'bombPickedUp':
+          // 引擎对每次真实拾取恰好发一次（需包在地面且在可拾取位）；玩家归属计数
+          if (ev.actorId === (this.player && this.player.id)) this.playerObjectiveActions++;
+          break;
+        case 'bombExploded': {
+          const site = (this.map.bombSites || []).find((s) => s.id === ev.site);
+          const p = site ? new THREE.Vector3(site.x, (site.y || 0) + 0.5, site.z) : this.renderer.camera.position;
+          this.fx.explosion(p);
+          audio.playExplosion(p);
+          break;
+        }
+        case 'roundEnded':
+          this.score = { ...this.bomb.score };
+          audio.playUI('roundEnd');
+          this.hud.toast(`回合结束 · <b>${ev.winner === 'BL' ? '潜伏者' : '保卫者'}</b> 胜（${BOMB_REASON_CN[ev.reason] || ev.reason}）`, 3);
+          break;
+        case 'matchEnded':
+          this.endMatch();
+          break;
+      }
+    }
   }
 
   // ================= 战斗 =================
@@ -316,6 +656,13 @@ export class Game {
     // 让附近的机器人听到
     for (const b of this.actors) if (b !== a && b.hear && b.team !== a.team && b.pos.distanceTo(a.pos) < 45) b.hear(a.pos, true);
     const end = this.traceBullet(a, eye, dir, d);
+    // 练习靶登记（仅玩家即时弹道；近战/投掷物不走此接缝）。
+    // P3-4 契约：maxDist = min(range, 墙面射线距离 - skin)，隔墙靶不得穿墙登记
+    if (this.practice && a.isPlayer && d.type !== 'melee' && d.type !== 'grenade') {
+      const wall = this.world.raycast(eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, d.range, 'move');
+      const maxDist = Math.min(d.range, (wall ? wall.t : d.range) - 0.07);
+      if (maxDist > 0) this.practice.hitScan(eye, dir, maxDist);
+    }
     if (!a.isPlayer || Math.random() < 0.35 || d.type === 'sniper') this.fx.tracer(muzzle, end);
     // 子弹掠过玩家
     const p = this.player;
@@ -421,43 +768,42 @@ export class Game {
     const dir = a.forward(new THREE.Vector3());
     const right = new THREE.Vector3(Math.cos(a.yaw), 0, -Math.sin(a.yaw));
     const pos = eye.clone().addScaledVector(dir, 0.5).addScaledVector(right, 0.12);
-    const vel = dir.clone().multiplyScalar(16).add(new THREE.Vector3(0, 2.8, 0)).addScaledVector(a.vel, 0.6);
-    const mesh = buildGunMerged('he'); mesh.scale.setScalar(1.3);
+    const id = a.weapon.def.id; // 持哪枚投哪枚（slot 3 轮换由 actor 层完成）
+    const def = WEAPONS[id] || WEAPONS.he;
+    const vel = computeThrowVelocity({ dir, actorVel: a.vel });
+    const mesh = buildGunMerged(id); mesh.scale.setScalar(1.3);
     mesh.position.copy(pos); this.renderer.scene.add(mesh);
-    this.nades.push({ mesh, pos, vel, fuse: WEAPONS.he.fuse, owner: a, spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0) });
+    // 运动为纯核心 GrenadeProjectile（数值与现役手写积分逐位等价）；spin/网格是表现层
+    const proj = new GrenadeProjectile({ pos, vel, fuse: def.fuse });
+    this.nades.push({ mesh, id: def.id, owner: a, proj, spin: new THREE.Vector3(Math.random() * 10, Math.random() * 10, 0) });
     audio.playGrenadeThrow();
     if (a.isPlayer) audio.announce('Fire in the hole!');
     for (const b of this.actors) if (b.hear && b.team !== a.team && b.pos.distanceTo(pos) < 20) b.hear(pos, false);
   }
   updateNades(dt) {
     const W = this.world;
+    // GrenadeProjectile 注入约定：(pos, dir, len) → {t,nx,ny,nz}|null，与 world.raycast('move') 对齐
+    const raycast = (pos, dir, len) => W.raycast(pos.x, pos.y, pos.z, dir.x, dir.y, dir.z, len, 'move');
     this.nades = this.nades.filter((n) => {
-      n.fuse -= dt;
-      const steps = 3, h = dt / steps;
-      for (let s = 0; s < steps; s++) {
-        n.vel.y -= 14 * h;
-        const sp = n.vel.length();
-        if (sp < 1e-4) continue;
-        const d = n.vel.clone().divideScalar(sp);
-        const L = sp * h + 0.07;
-        const hit = W.raycast(n.pos.x, n.pos.y, n.pos.z, d.x, d.y, d.z, L, 'move');
-        if (hit) {
-          const nn = new THREE.Vector3(hit.nx, hit.ny, hit.nz);
-          n.pos.addScaledVector(d, Math.max(0, hit.t - 0.07));
-          const vn = n.vel.dot(nn);
-          n.vel.addScaledVector(nn, -1.45 * vn).multiplyScalar(0.55);
-          if (Math.abs(vn) > 2) audio.playGrenadeBounce(n.pos.clone());
-          if (nn.y > 0.7 && Math.abs(n.vel.y) < 1.2) { n.vel.y = 0; n.vel.x *= 0.8; n.vel.z *= 0.8; }
+      const events = n.proj.step(dt, raycast);
+      n.mesh.position.set(n.proj.pos.x, n.proj.pos.y, n.proj.pos.z);
+      for (const ev of events) {
+        if (ev.type === 'bounce') {
           n.spin.multiplyScalar(0.6);
-        } else n.pos.addScaledVector(n.vel, h);
+          if (ev.impactSpeed > 2) audio.playGrenadeBounce(new THREE.Vector3(ev.pos.x, ev.pos.y, ev.pos.z));
+        } else if (ev.type === 'fuse') {
+          this.detonate(n, ev.pos);
+          this.renderer.scene.remove(n.mesh);
+          return false;
+        }
       }
-      n.mesh.position.copy(n.pos);
       n.mesh.rotation.x += n.spin.x * dt; n.mesh.rotation.y += n.spin.y * dt;
-      if (n.fuse <= 0) { this.explode(n.pos.clone(), n.owner); this.renderer.scene.remove(n.mesh); return false; }
       return true;
     });
   }
   explode(p, owner) {
+    // 现役 HE 结算路径保留（队伍免疫/半径衰减/遮挡减伤与 computeHeBlast 数值一致，
+    // 由 grenade-effects 单测锁定默认值对齐）；经 GrenadeProjectile 的 fuse 事件触发
     const d = WEAPONS.he;
     this.fx.explosion(p);
     audio.playExplosion(p);
@@ -489,6 +835,7 @@ export class Game {
     }
     v.hp -= hpD;
     v.lastAttacker = att; v.lastHurt = this.time;
+    v.hurtTick = this.tick; // 本帧受伤事实（安包/拆包会被打断）
     const killed = v.hp <= 0;
     if (att && att !== v) att.stats.hits++;
     if (v.isPlayer) {
@@ -512,7 +859,7 @@ export class Game {
     const p = this.player;
     if (att && att !== v) {
       att.stats.k++; if (hs) att.stats.hs++;
-      this.score[att.team]++;
+      if (this.mode.scoreKills !== false) this.score[att.team]++; // 爆破比分是回合数，击杀不计
       att.multi = this.time - att.lastKillT < 5 ? att.multi + 1 : 1;
       att.lastKillT = this.time; att.streak++;
     }
@@ -553,6 +900,8 @@ export class Game {
     this.vm.equip(a.weapon.id, a.weapon.def.draw);
     audio.playWeaponSwitch(a.weapon.id);
     this.hud.slots(a.inv, a.slot);
+    // 练习任意换枪：把实际切换同步进运行时（校验/槽位语义由 PracticeRuntime 保证）
+    if (this.practice) this.practice.selectWeapon(a.weapon.id);
   }
   onReloadStart(a, empty) {
     if (!a.isPlayer) return;
@@ -596,6 +945,7 @@ export class Game {
     const cam = this.renderer.camera;
     {
       this.time += dt;
+      this.tick++;
       this.timeLeft -= dt;
       for (let i = this.timers.length - 1; i >= 0; i--) if (this.time >= this.timers[i].t) { const f = this.timers[i].fn; this.timers.splice(i, 1); f(); }
       this.player.update(dt);
@@ -617,11 +967,27 @@ export class Game {
         } else {
           a.deadT += dt;
           a.soldier.update(dt, {});
-          a.respawnT -= dt;
-          if (a.respawnT <= 0 && !this.ended) this.spawnActor(a);
+          // 复活由模式适配器决定：爆破无个体复活（respawnT 为 null），统一回合复活走会话 spawnAll
+          if (a.respawnT != null) {
+            a.respawnT -= dt;
+            if (a.respawnT <= 0 && !this.ended) this.spawnActor(a);
+          }
         }
       }
       this.updateNades(dt);
+      this.updateSmokes(dt);
+      // 练习运行时：只随模拟推进（暂停 = simulate 不被调用即冻结）；受击高亮在 renderFrame 刷新
+      if (this.practice) this.practice.update(dt);
+      // 爆破会话：规则时间只在此推进（暂停时 simulate 不被调用即冻结）；事实每帧装配，
+      // inSite 由会话按地图包点补全为包点 ID 字符串
+      if (this.bombSession) {
+        const facts = this.actors.map((a) => ({
+          id: a.id, alive: a.alive, pos: { x: a.pos.x, y: a.pos.y, z: a.pos.z },
+          moving: (a.speed || 0) > 0.4, damaged: a.hurtTick === this.tick,
+        }));
+        this.bombSession.update(dt, facts);
+        this.syncC4World();
+      }
       if (this.timeLeft <= 0 && !this.ended) this.endMatch();
       // 队友名字
       for (const t of this.tags) {
@@ -633,6 +999,13 @@ export class Game {
   }
   renderFrame(dt) {
     const R = this.renderer, cam = R.camera;
+    // 练习靶受击高亮（flash 由 PracticeRuntime 按 dt 衰减）
+    if (this.practice) {
+      for (const t of this.practiceMeshes) {
+        const s = this.practice.states.find((x) => x.id === t.id);
+        if (s) t.mat.color.set(s.flash > 0 ? 0xff5040 : 0xc8ccd0);
+      }
+    }
     // 第一人称武器
     if (this.player && this.playing) {
       const p = this.player;
@@ -645,13 +1018,14 @@ export class Game {
     }
     this.fx.update(dt, this.realTime, cam, this.env.shipSpeed);
     this.env.update(dt, this.realTime, cam.position);
-    this.map.update(dt, this.realTime);
+    this.map.update?.(dt, this.realTime); // 运输船有动画帧回调；地图可不提供
     // 帧率统计与画质建议
     this.fpsAcc = (this.fpsAcc || 0) + dt; this.fpsN = (this.fpsN || 0) + 1;
     if (this.fpsAcc > 1) {
       this.fps = Math.round(this.fpsN / this.fpsAcc); this.fpsAcc = 0; this.fpsN = 0;
       const lbl = document.querySelector('#radarWrap .lbl');
-      if (lbl) lbl.textContent = `${this.mapDesc.name} · ${this.fps} FPS`;
+      const region = this.player && this.playing ? this.regionAt(this.player.pos) : null;
+      if (lbl) lbl.textContent = `${this.mapDesc.name}${region ? ' · ' + region : ''} · ${this.fps} FPS`;
       if (this.playing && !this.paused && this.time > 8 && !this.fpsHinted && this.fps < 32 && this.opts.quality !== 'low') {
         this.fpsHinted = true;
         this.hud.toast('帧率较低：可按 Esc 在主菜单把画质调到「均衡」或「流畅」', 5);
@@ -703,6 +1077,8 @@ export class Game {
         const r = a.soldier.hitTest(o, d, bt, this.frame);
         if (r) { best = a; bt = r.t; }
       }
+      // 烟雾遮挡玩家视觉（与 AI canSee 同一接缝 smokeBlocksSight 语义）
+      if (best && this.smokeBlocked(o, best.pos)) best = null;
       this.aimTarget = best;
     }
     if (this.aimTarget && this.aimTarget.alive) { aimName = this.aimTarget.name; aimTeam = this.aimTarget.team; }
@@ -710,6 +1086,16 @@ export class Game {
       score: this.score, timeLeft: this.timeLeft, goal: this.goal, myTeam: p.team, modeName: this.mode.name,
       hp: p.hp, armor: p.armor, alive: p.alive, weapon: w, scoped: p.scoped && w.def.type === 'sniper', spreadPx,
       yaw: p.yaw, respawnIn: p.respawnT, killedBy: this.killedBy, protect: p.protectT, aimName, aimTeam,
+      objective: this.objectiveView(p.id), // 爆破回合/比分/C4/交互提示（HUD 不自行推算规则）
+      // 闪光致盲（HUD 白屏叠加消费）：remaining 秒、intensity 0..1 峰值
+      blind: p.alive ? {
+        remaining: Math.max(0, (p.blindUntil || 0) - this.time),
+        intensity: p.blindIntensity || 0,
+      } : null,
+      // 练习快照（命中数/靶位/当前枪），HUD 练习面板消费；非练习恒 null
+      practice: this.practice ? this.practice.snapshot() : null,
+      // 本局军衔结算结果（endScreen 可直接渲染 awarded/xp/rank/rankUp）
+      award: this.ended ? this.lastAward : null,
     });
     this.hud.drawRadar(p, this.actors, this.time);
     const tab = p.keys.has('Tab') && this.playing && !this.paused;

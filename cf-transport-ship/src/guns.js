@@ -82,7 +82,9 @@ function curvedMag(g, mat, segs, x0, y0, z0, w, segH, segD, curve) {
   return mag;
 }
 
-const builders = {
+// 模型注册表：WEAPONS 的每个 id 都必须在这里有 builder（Game.makeIcons 遍历 WEAPONS 建
+// 图标、viewmodel 装备时各建一份；缺项会让 Game.init 中断）。导出供测试锁定完整性。
+export const builders = {
   ak47(m) {
     const g = new THREE.Group();
     part(g, RB(0.046, 0.058, 0.25), m.metal, 0, 0.035, -0.05);
@@ -245,6 +247,64 @@ const builders = {
     part(g, BX(0.07, 0.012, 0.004), m.tan, 0, -0.005, 0.034);
     anchor(g, 'grip', 0, 0, 0.0);
     anchor(g, 'muzzle', 0, 0, -0.04);
+    return g;
+  },
+  // 闪光弹（细长筒身 + 斜纹带 + 顶部泄气孔 + 拉环/保险杆）
+  flash(m) {
+    const g = new THREE.Group();
+    part(g, CY(0.017, 0.095, 14), m.steel, 0, 0, 0);
+    part(g, CY(0.0145, 0.012, 12), m.metal, 0, 0.053, 0);
+    part(g, CY(0.0145, 0.012, 12), m.metal, 0, -0.053, 0);
+    // 侧身斜纹带（略宽于筒身，两侧露出形成浅色斜条）
+    for (let i = 0; i < 4; i++) part(g, BX(0.042, 0.012, 0.004), m.tan, 0, 0.02 - i * 0.014, 0, 0, i * 0.8, 0.5);
+    // 顶部泄气孔
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      part(g, BX(0.006, 0.004, 0.006), m.black, Math.cos(a) * 0.009, 0.059, Math.sin(a) * 0.009);
+    }
+    const cap = part(g, CY(0.011, 0.014, 10), m.black, 0, 0.066, 0);
+    void cap;
+    const lever = part(g, BX(0.012, 0.062, 0.005), m.metal, 0.019, 0.03, 0.012, -0.3, 0, 0, 'lever');
+    void lever;
+    const pin = part(g, new THREE.TorusGeometry(0.01, 0.002, 6, 14), m.steel, 0.02, 0.066, 0, 0, Math.PI / 2, 0, 'pin');
+    void pin;
+    anchor(g, 'grip', 0, -0.01, 0);
+    anchor(g, 'muzzle', 0, -0.06, 0);
+    return g;
+  },
+  // 烟雾弹（罐体 + 顶部拉杆与排气孔 + 色带标识）
+  smoke(m) {
+    const g = new THREE.Group();
+    part(g, CY(0.03, 0.11, 16), m.olive, 0, 0, 0);
+    part(g, CY(0.031, 0.008, 16), m.metal, 0, 0.058, 0);
+    part(g, CY(0.031, 0.008, 16), m.metal, 0, -0.058, 0);
+    // 环身色带（灰烟标识）
+    const band = part(g, new THREE.TorusGeometry(0.0305, 0.0022, 6, 20), m.tan, 0, 0.012, 0, Math.PI / 2, 0, 0);
+    void band;
+    // 顶部排气孔
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + 0.4;
+      part(g, BX(0.007, 0.004, 0.007), m.black, Math.cos(a) * 0.017, 0.063, Math.sin(a) * 0.017);
+    }
+    // 顶部拉杆与拉环
+    const lever = part(g, BX(0.014, 0.075, 0.006), m.metal, 0.032, 0.03, 0.016, -0.22, 0, 0, 'lever');
+    void lever;
+    const pin = part(g, new THREE.TorusGeometry(0.011, 0.0022, 6, 14), m.steel, 0.034, 0.07, 0.006, 0, Math.PI / 2, 0, 'pin');
+    void pin;
+    anchor(g, 'grip', 0, -0.015, 0);
+    anchor(g, 'muzzle', 0, -0.065, 0);
+    return g;
+  },
+  // C4 爆破物（5号槽）：炸药块 + 定时键盘 + 胶带
+  c4(m) {
+    const g = new THREE.Group();
+    part(g, RB(0.17, 0.05, 0.26, 0.006), m.tan, 0, 0, 0);
+    part(g, BX(0.176, 0.004, 0.266), m.olive, 0, -0.027, 0);
+    part(g, RB(0.055, 0.014, 0.095, 0.004), m.black, 0, 0.031, -0.045);
+    for (let i = 0; i < 4; i++) part(g, BX(0.009, 0.005, 0.009), m.red, -0.014 + (i % 2) * 0.028, 0.04, -0.072 + ((i / 2) | 0) * 0.03);
+    part(g, BX(0.012, 0.003, 0.15), m.red, 0.055, 0.012, 0.03, 0, 0.3, 0);
+    part(g, CX(0.006, 0.035), m.metal, -0.045, 0.032, 0.05, 0, 0, Math.PI / 2);
+    anchor(g, 'grip', 0, -0.015, 0.07);
     return g;
   },
 };

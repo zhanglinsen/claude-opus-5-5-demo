@@ -2,7 +2,8 @@
 import { WEAPONS, PRIMARIES } from './weapons.js';
 import { loadOpts, saveOpts, acquireStorage } from './settings.js';
 import { MAPS } from './maps/registry.js';
-import { getMode } from './modes/index.js';
+import { getMode, modeOptionsFor } from './modes/index.js';
+import { BOMB_DEFAULTS } from './modes/bomb.js';
 
 const TEAM_CN = { BL: '潜伏者', GR: '保卫者' };
 const $ = (s, r = document) => r.querySelector(s);
@@ -12,6 +13,130 @@ const WB_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="htt
 const BADGE_SVG = (color, inner) => `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="bg" cx="50%" cy="45%"><stop offset="0" stop-color="${color}" stop-opacity=".95"/><stop offset="1" stop-color="#1a0a00" stop-opacity=".9"/></radialGradient></defs><polygon points="50,3 93,27 93,73 50,97 7,73 7,27" fill="url(#bg)" stroke="#ffd24a" stroke-width="3"/>${inner}</svg>`;
 const SKULL = `<g fill="#fff"><path d="M50 22c-14 0-24 9-24 22 0 8 4 13 9 16v9h30v-9c5-3 9-8 9-16 0-13-10-22-24-22z"/><rect x="40" y="66" width="4" height="8"/><rect x="48" y="66" width="4" height="8"/><rect x="56" y="66" width="4" height="8"/></g><circle cx="41" cy="45" r="6" fill="#3a1500"/><circle cx="59" cy="45" r="6" fill="#3a1500"/>`;
 const CROSSHAIR_B = `<g fill="none" stroke="#fff" stroke-width="4"><circle cx="50" cy="50" r="20"/><path d="M50 18v14M50 68v14M18 50h14M68 50h14"/></g><circle cx="50" cy="50" r="5" fill="#ff3020"/>`;
+
+// 爆破 HUD 只读渲染：把 Game.objectiveView 提供的 s.objective 映射为可见文案/进度。
+// 不计算任何规则结果——回合胜负、时间、C4 状态全部取自视图字段。
+export function objectiveHud(view, ctx = {}) {
+  const off = { active: false, round: '', aliveBL: '', aliveGR: '', c4: '', c4Cls: '', hint: '', progress: null };
+  if (!view || !view.phase || view.phase === 'idle' || view.phase === 'matchEnd') return off;
+  const out = { ...off, active: true };
+  out.round = view.round ? `第 ${view.round} 回合` : '';
+  out.aliveBL = String(view.alive?.BL ?? '');
+  out.aliveGR = String(view.alive?.GR ?? '');
+  const bomb = view.bomb || null;
+  const plantHold = view.plantHold || BOMB_DEFAULTS.plantHold;
+  const defuseHold = view.defuseHold || BOMB_DEFAULTS.defuseHold;
+  if (view.phase === 'roundEnd') {
+    out.c4 = '';
+    out.hint = view.roundWinner === 'BL' ? '潜伏者 拿下本回合' : view.roundWinner === 'GR' ? '保卫者 拿下本回合' : '回合结束';
+    return out;
+  }
+  if (view.phase === 'planted') {
+    out.c4 = `C4 已安放${bomb?.site ? ' · ' + bomb.site + ' 点' : ''}`;
+    out.c4Cls = 'planted';
+    if (view.defusable) out.hint = '按住 E 拆除 C4';
+    else if (ctx.myTeam === 'BL') out.hint = '守住 C4 直至引爆';
+    else out.hint = '前往 C4 点拆除';
+    if (view.defuseProgress > 0) out.progress = { label: '正在拆除', frac: Math.min(1, view.defuseProgress / defuseHold) };
+    return out;
+  }
+  if (bomb && bomb.planted) { // 视图相位与C4状态不一致时按安放渲染（防御）
+    out.c4 = `C4 已安放${bomb.site ? ' · ' + bomb.site + ' 点' : ''}`;
+    out.c4Cls = 'planted';
+    return out;
+  }
+  if (bomb && bomb.dropped) {
+    out.c4 = 'C4 已掉落';
+    out.c4Cls = 'dropped';
+    if (view.pickupable) out.hint = '按 E 拾取 C4';
+    else if (ctx.myTeam === 'BL') out.hint = '找回 C4';
+    else out.hint = '阻止对方拾取 C4';
+    return out;
+  }
+  if (bomb && bomb.carrierId != null) {
+    if (bomb.carrierId === ctx.myId) { out.c4 = 'C4 · 我携带'; out.c4Cls = 'carry'; }
+    else {
+      const a = ctx.actorOf ? ctx.actorOf(bomb.carrierId) : null;
+      if (a && ctx.myTeam && a.team === ctx.myTeam) { out.c4 = `C4 · ${a.name} 携带`; out.c4Cls = 'carry'; }
+      else { out.c4 = 'C4 · 敌方携带'; out.c4Cls = 'enemy'; }
+    }
+    if (view.plantable) out.hint = '按住左键安放 C4';
+    if (view.plantProgress > 0) out.progress = { label: '正在安放', frac: Math.min(1, view.plantProgress / plantHold) };
+  }
+  if (view.phase === 'prep' && !out.hint) out.hint = '准备期 · 按 B 更换背包';
+  return out;
+}
+
+// 主计时条只消费当前模式的公开视图；爆破的 Infinity 对局时限不能当作回合时钟。
+export function matchHeader(s) {
+  const bomb = s.objective;
+  const remaining = bomb ? bomb.timeLeft : s.timeLeft;
+  const tl = Math.max(0, Number.isFinite(remaining) ? remaining : 0);
+  const mm = Math.floor(tl / 60), ss = Math.floor(tl % 60);
+  return {
+    clock: `${mm}:${ss < 10 ? '0' : ''}${ss}`,
+    goal: bomb
+      ? `${s.modeName || '爆破模式'} · 先赢 ${bomb.winsNeeded ?? BOMB_DEFAULTS.winsNeeded} 局`
+      : `${s.modeName || '团队竞技'} · 目标 ${s.goal}`,
+  };
+}
+
+// 闪光白屏状态机（phase-5-wiring §4.1 契约的渲染侧）：opacity ∝ intensity × remaining/满时长。
+// state 为 HUD 持有的跨帧 episode（{remaining, duration}）：更晚到期的更强闪光重置满时长，
+// 叠加的更弱/更短闪光不重置；remaining ≤ 0 或无数据一律隐藏。
+export function updateBlindState(state, blind) {
+  if (!blind || !(blind.remaining > 0)) {
+    state.remaining = 0; state.duration = 0;
+    return { visible: false, opacity: 0 };
+  }
+  if (blind.remaining > state.remaining + 1e-3) state.duration = blind.remaining;
+  state.remaining = blind.remaining;
+  const intensity = Math.min(1, Math.max(0, blind.intensity || 0));
+  const frac = state.duration > 0 ? Math.min(1, blind.remaining / state.duration) : 0;
+  return { visible: true, opacity: intensity * frac };
+}
+
+// 菜单模式分段的生效值：已存模式合法且该图支持才生效，否则地图默认（运输船 tdm、沙漠灰 bomb）。
+// 与 startMatch 的解析对齐（URL ?mode= 优先于已存设置，那一半在 game.js）。
+export function effectiveMode(opts, mapDesc) {
+  const mode = opts && opts.mode;
+  const supported = mapDesc && Array.isArray(mapDesc.supportedModes) ? mapDesc.supportedModes : null;
+  if (mode && supported && supported.includes(mode)) return mode;
+  return (mapDesc && mapDesc.defaultMode) || 'tdm';
+}
+
+// P3-5②：菜单高亮用的「实际开局模式」——镜像 startMatch 的完整解析顺序
+//（URL 合法且该图支持 → 优先；否则回落 effectiveMode 的已存/地图默认语义），
+// 保证 URL 携带非法/不支持 mode 时高亮与实际开局一致。
+export function displayMode(qs, opts, mapDesc) {
+  const requested = qs && typeof qs.get === 'function' ? qs.get('mode') : null;
+  const supported = mapDesc && Array.isArray(mapDesc.supportedModes) ? mapDesc.supportedModes : null;
+  if (requested && supported && supported.includes(requested)) return requested;
+  return effectiveMode(opts, mapDesc);
+}
+
+// 结算页军衔行：awarded:false（去重重放/练习）静默；rank 缺失时仍给 XP（防御）
+export function awardLine(award) {
+  if (!award || !award.awarded) return '';
+  const xp = `+${award.xp ?? 0} XP`;
+  const r = award.rank;
+  if (!r) return xp;
+  return `${award.rankUp ? '军衔晋升！' : ''}${xp} · ${r.rankName || ''}${r.level ? ` · Lv.${r.level}` : ''}`;
+}
+
+// 投掷物背包行：[{id, name, count, current}]；剩余 0 的型号不再显示，current 供 4 号轮换高亮
+export function nadeSummary(bag, used, currentId) {
+  if (!Array.isArray(bag)) return [];
+  const rows = [];
+  for (const id of bag) {
+    const def = WEAPONS[id];
+    if (!def) continue;
+    const count = Math.max(0, (def.count || 1) - ((used && used[id]) || 0));
+    if (count <= 0) continue;
+    rows.push({ id, name: def.name, count, current: id === currentId });
+  }
+  return rows;
+}
 
 export class HUD {
   constructor(game) {
@@ -25,6 +150,12 @@ export class HUD {
     this.dmgDirs = [];
     this.hitT = 0; this.toastT = 0;
     this.slotsT = 0;
+    this.blind = { remaining: 0, duration: 0 }; // 闪光白屏 episode 状态
+    this.qs = new URLSearchParams(location.search); // 与 game 构造期同一 URL 快照（菜单高亮镜像开局解析）
+    this._profileBound = false;
+    this._prChips = '';
+    this._nadeHtml = null; // P3-1：投掷物背包条仅变化时重写
+    this._endAward = null; // P3-2：结算军衔行仅变化时重写
     this.radarCtx = this.el.radar.getContext('2d');
     const touch = matchMedia('(pointer:coarse)').matches;
     this.opts = loadOpts(acquireStorage(), touch);
@@ -53,6 +184,30 @@ export class HUD {
     this.el.mapBlurb.innerHTML = desc.menu ? desc.menu.blurb : '';
     this.el.loadTitle.textContent = desc.name.split('').join(' ');
     this.el.boardTitle.textContent = `${desc.name} · ${getMode(desc.defaultMode).name}`;
+    this.buildModeSeg();
+  }
+  // 菜单模式分段：按地图 supportedModes 顺序渲染（modeOptionsFor），高亮当前生效模式；
+  // 点击只写入设置并保存，开局经 startMatch 生效（URL ?mode= 仍优先于已存设置）
+  buildModeSeg() {
+    const seg = $('#modeSeg');
+    if (!seg) return;
+    seg.innerHTML = '';
+    const cur = this.menuMode();
+    for (const m of modeOptionsFor(this.mapDesc)) {
+      const b = document.createElement('button');
+      b.dataset.v = m.id;
+      b.textContent = m.name;
+      if (m.id === cur) b.classList.add('on');
+      b.addEventListener('click', () => {
+        for (const x of seg.querySelectorAll('button')) x.classList.remove('on');
+        b.classList.add('on');
+        this.opts.mode = m.id;
+        this.saveOpts();
+        this.g.onOption?.('mode', m.id);
+        this.g.audio?.playUI('click');
+      });
+      seg.appendChild(b);
+    }
   }
   buildMenu() {
     const o = this.opts;
@@ -72,6 +227,18 @@ export class HUD {
           this.g.audio?.playUI('click');
         });
       }
+    }
+    // 切图时模式回落该图默认（运输船 tdm、沙漠灰 bomb）；对局时 URL ?mode= 仍优先于已存设置
+    for (const b of $('#mapSeg').querySelectorAll('button')) {
+      b.addEventListener('click', () => {
+        const d = MAPS[b.dataset.v];
+        o.mode = (d && d.defaultMode) || null;
+        this.saveOpts();
+      });
+    }
+    // 练习面板换枪按钮：主武器走现有换包路径（onSwitch 同步练习运行时），其余按槽位真实切枪
+    for (const b of this.root.querySelectorAll('#prGuns button')) {
+      b.addEventListener('click', () => this.practiceSwitch(+b.dataset.slot, b.dataset.w));
     }
     for (const sl of this.root.querySelectorAll('.slider[data-k]')) {
       const k = sl.dataset.k, inp = sl.querySelector('input'), sp = sl.querySelector('span');
@@ -103,15 +270,63 @@ export class HUD {
   }
   syncControls() {
     const o = this.opts;
-    for (const s of this.root.querySelectorAll('.seg[data-k]')) for (const b of s.querySelectorAll('button')) b.classList.toggle('on', String(o[s.dataset.k]) === b.dataset.v);
+    for (const s of this.root.querySelectorAll('.seg[data-k]')) {
+      // 模式高亮跟随实际开局解析（P3-5②：URL 非法/不支持时回落默认，不跟随已存值）
+      const val = s.dataset.k === 'mode' ? this.menuMode() : o[s.dataset.k];
+      for (const b of s.querySelectorAll('button')) b.classList.toggle('on', String(val) === b.dataset.v);
+    }
     for (const sl of this.root.querySelectorAll('.slider[data-k]')) {
       const k = sl.dataset.k; sl.querySelector('input').value = o[k]; sl.querySelector('span').textContent = (+o[k]).toFixed(k === 'fov' ? 0 : 2);
     }
   }
   show(name) {
     if (name === 'menu' || name === 'pause') this.syncControls();
+    if (name === 'menu' || name === 'end') this.ensureProfile();
     for (const n of ['menu', 'pause', 'end', 'loadout', 'loading']) this.el[n].classList.toggle('hidden', n !== name);
     this.el.hud.classList.toggle('hidden', name === 'menu' || name === 'loading' || name === 'end');
+  }
+  // P3-5②：菜单模式高亮 = 实际开局模式（URL 合法优先 → 已存 → 地图默认）
+  menuMode() { return displayMode(this.qs, this.opts, this.mapDesc); }
+  // ---------- 军衔/档案（adapter 由 Game.init 在 HUD 之后装配，这里惰性绑定，事件刷新不轮询） ----------
+  ensureProfile() {
+    const a = this.g.profileAdapter;
+    if (!a) return;
+    if (!this._profileBound) {
+      this._profileBound = true;
+      a.onProfileChanged(({ reason }) => {
+        if (reason === 'preset') {
+          this.opts.primary = a.loadout().primary;
+          this.saveOpts();
+          this.syncControls();
+        }
+        this.renderProfile();
+      });
+    }
+    this.renderProfile();
+  }
+  renderProfile() {
+    const a = this.g.profileAdapter;
+    if (!a) return;
+    const r = a.rankView();
+    this.el.rankName.textContent = r.rankName;
+    this.el.rankLevel.textContent = `Lv.${r.level}`;
+    this.el.rankXp.textContent = r.nextThreshold != null ? `${r.xp} / ${r.nextThreshold} XP` : `${r.xp} XP · 满级`;
+    this.el.rankFill.style.width = `${Math.round(Math.min(1, Math.max(0, r.progress)) * 100)}%`;
+    // 存档通道降级（隐私模式/配额错误）：如实提示会话内有效，不宣称「已保存」
+    this.el.profileNote.classList.toggle('hidden', a.persistence() !== 'memory');
+    const ps = a.presets();
+    const seg = this.el.presetSeg;
+    seg.innerHTML = '';
+    ps.list.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.innerHTML = `预设 ${i + 1}<small>${esc((WEAPONS[p.primary] || {}).name || p.primary)} · ${esc((WEAPONS[p.grenade] || {}).name || p.grenade)}</small>`;
+      if (i === ps.active) b.classList.add('on');
+      b.addEventListener('click', () => {
+        a.switchPreset(i); // adapter 事件 → onProfileChanged → 重渲染高亮
+        this.g.audio?.playUI('click');
+      });
+      seg.appendChild(b);
+    });
   }
   loading(p, text) { this.el.loadBar.style.width = (p * 100).toFixed(0) + '%'; if (text) this.el.loadTxt.textContent = text; }
 
@@ -120,9 +335,9 @@ export class HUD {
     const e = this.el;
     // 比分与时间
     e.sBL.textContent = s.score.BL; e.sGR.textContent = s.score.GR;
-    const tl = Math.max(0, s.timeLeft), mm = (tl / 60) | 0, ss = (tl % 60) | 0;
-    e.sTime.textContent = `${mm}:${ss < 10 ? '0' : ''}${ss}`;
-    e.sGoal.textContent = `${s.modeName || '团队竞技'} · 目标 ${s.goal}`;
+    const header = matchHeader(s);
+    e.sTime.textContent = header.clock;
+    e.sGoal.textContent = header.goal;
     e.tBL.classList.toggle('mine', s.myTeam === 'BL'); e.tGR.classList.toggle('mine', s.myTeam === 'GR');
     // 生命护甲
     e.hpVal.textContent = Math.max(0, Math.ceil(s.hp));
@@ -165,15 +380,108 @@ export class HUD {
     this.feedItems = this.feedItems.filter((f) => { if (now - f.t > 7000) { f.el.remove(); return false; } return true; });
     // 提示
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) e.toast.style.opacity = 0; }
-    // 中央信息
-    if (!s.alive && s.respawnIn > 0) {
+    // 中央信息（阵亡/观战）由 updateObjective 统一处理
+    e.protect.textContent = s.protect > 0 && s.alive ? `出生保护 ${s.protect.toFixed(1)}s（开火即解除）` : '';
+    e.nameTip.textContent = s.aimName || ''; e.nameTip.className = s.aimTeam || '';
+    if (this.slotsT > 0) { this.slotsT -= dt; e.slots.style.opacity = Math.min(1, this.slotsT * 2); } else e.slots.style.opacity = 0;
+    // 闪光白屏（s.blind，仅玩家存活时非 null；pointer-events:none 不拦截任何输入）
+    const bl = updateBlindState(this.blind, s.blind);
+    e.blind.style.opacity = bl.opacity;
+    e.blind.classList.toggle('hidden', !bl.visible);
+    // 投掷物背包条（slot 3 轮换 / 剩余量 / 当前高亮）
+    this.updateNadeInfo();
+    // 练习面板（非练习模式 s.practice = null → 隐藏）
+    this.updatePractice(s);
+    // 结算军衔行（s.award 仅 ended 后非 null；awarded:false 静默）——P3-2：仅变化时重写
+    const award = s.award ? awardLine(s.award) : '';
+    if (award !== this._endAward) {
+      e.endAward.innerHTML = award;
+      e.endAward.classList.toggle('hidden', !award);
+      this._endAward = award;
+    }
+    this.updateObjective(dt, s);
+  }
+  updateNadeInfo() {
+    const p = this.g.player, e = this.el.nadeInfo;
+    const rows = p ? nadeSummary(p.grenadeBag, p.usedGrenades, p.inv[3] && p.inv[3].def.id) : [];
+    const hidden = e.classList.contains('hidden');
+    if (!rows.length) { if (!hidden) e.classList.add('hidden'); return; }
+    const html = rows.map((r) => `<span class="${r.current ? 'on' : ''}">${esc(r.name)}<b>×${r.count}</b></span>`).join('');
+    if (hidden || html !== this._nadeHtml) { // P3-1：与练习 chips 同纪律，仅变化时重写 DOM
+      e.classList.remove('hidden');
+      e.innerHTML = html;
+      this._nadeHtml = html;
+    }
+  }
+  updatePractice(s) {
+    const e = this.el, pr = s.practice;
+    if (!pr) { e.practice.classList.add('hidden'); return; }
+    e.practice.classList.remove('hidden');
+    e.prHits.textContent = `命中 ${pr.totalHits}`;
+    // P3-6 空态防御：开局 PracticeRuntime.current 可能为 null（game 侧种子化由接线会话处理），
+    // 这里显示空武器名、无按钮高亮即可，不抛错
+    const w = WEAPONS[pr.weapon && pr.weapon.current];
+    e.prWeapon.textContent = w ? w.name : '';
+    // 靶位：受击 flash>0 高亮 + 每靶命中数（DOM 写仅在变化时发生）
+    const chips = (pr.targets || []).map((t) => `<i class="${t.flash > 0 ? 'on' : ''}">${esc(t.id)} ${t.hits}</i>`).join('');
+    if (chips !== this._prChips) { e.prTargets.innerHTML = chips; this._prChips = chips; }
+    const cur = (pr.weapon && pr.weapon.current) || '';
+    for (const b of e.prGuns.querySelectorAll('button')) {
+      const slot = pr.weapon && pr.weapon.slots[b.dataset.slot];
+      b.classList.toggle('on', b.dataset.w ? b.dataset.w === slot : WEAPONS[cur]?.slot === 3);
+    }
+  }
+  practiceSwitch(slot, id) {
+    const p = this.g.player;
+    if (!p || !p.inv[slot]) return;
+    // chooseLoadout onSwitch 同步已由 game.js 修复（原 P2-1 勘误，phase-5 复核为已接受残余后闭环）。
+    if (slot === 0 && id) { this.g.chooseLoadout(id); return; }
+    p.weaponUpdate(0.05, { sw: slot }); // 真实切枪路径 → onSwitch → practice.selectWeapon
+  }
+  // 爆破目标 HUD：只读渲染 s.objective（Game.objectiveView 提供的同一视图），不计算任何规则结果
+  updateObjective(dt, s) {
+    const e = this.el, p = this.g.player;
+    const oh = objectiveHud(s.objective, {
+      myId: p && p.id, myTeam: s.myTeam,
+      actorOf: (id) => this.g.actors.find((a) => a.id === id) || null,
+    });
+    e.objInfo.classList.toggle('hidden', !oh.active);
+    e.objRound.textContent = oh.round;
+    e.objAlive.textContent = oh.active ? `存活 ${oh.aliveBL} : ${oh.aliveGR}` : '';
+    e.c4State.textContent = oh.c4;
+    e.c4State.className = oh.c4 ? oh.c4Cls : 'hidden';
+    e.objHint.classList.toggle('hidden', !oh.hint);
+    e.objHint.textContent = oh.hint;
+    if (oh.progress) {
+      e.objProg.classList.remove('hidden');
+      e.objProgFill.style.width = (oh.progress.frac * 100).toFixed(0) + '%';
+      e.objProgLbl.textContent = oh.progress.label;
+    } else e.objProg.classList.add('hidden');
+    // 5号槽 C4 虚拟槽位
+    const carrying = !!(s.objective && s.objective.bomb && s.objective.bomb.carrierId != null && p && s.objective.bomb.carrierId === p.id);
+    e.slotC4.classList.toggle('hidden', !carrying);
+    e.slotC4.classList.toggle('on', carrying && !!(p && p.c4Selected));
+    // C4 在手时弹药区显示 C4
+    if (p && p.c4Selected && oh.active && s.alive) {
+      e.wName.textContent = 'C4 爆破物';
+      e.aMag.textContent = '—'; e.aMag.classList.remove('low');
+      e.aRes.textContent = '';
+      e.aHint.textContent = oh.hint || '';
+      e.wIcon.style.visibility = 'hidden';
+    } else e.wIcon.style.visibility = '';
+    // 死亡观战（爆破模式）
+    if (!s.alive && oh.active) {
+      e.center.classList.remove('hidden');
+      e.cBig.textContent = p && p.spectateName ? `观战中 · ${p.spectateName}` : '观战中';
+      e.cSmall.textContent = '点击鼠标切换观战队友 · 下一回合复活';
+    } else if (!s.alive && s.respawnIn > 0) {
       e.center.classList.remove('hidden');
       e.cBig.innerHTML = s.killedBy || '你阵亡了';
       e.cSmall.textContent = `${s.respawnIn.toFixed(1)} 秒后复活 · 按 B 更换武器`;
     } else e.center.classList.add('hidden');
-    e.protect.textContent = s.protect > 0 && s.alive ? `出生保护 ${s.protect.toFixed(1)}s（开火即解除）` : '';
-    e.nameTip.textContent = s.aimName || ''; e.nameTip.className = s.aimTeam || '';
-    if (this.slotsT > 0) { this.slotsT -= dt; e.slots.style.opacity = Math.min(1, this.slotsT * 2); } else e.slots.style.opacity = 0;
+    // 触屏目标交互按钮仅爆破模式显示
+    const showObj = oh.active && s.alive;
+    for (const b of (this.g.touch && this.g.touch.objBtns) || []) b.style.display = showObj ? 'grid' : 'none';
   }
   slots(inv, cur) {
     const e = this.el.slots;
@@ -219,8 +527,8 @@ export class HUD {
     this.el.board.classList.toggle('hidden', !show);
     if (!show) return;
     const rows = (team) => actors.filter((a) => a.team === team).sort((a, b) => b.stats.k - a.stats.k || a.stats.d - b.stats.d)
-      .map((a) => `<tr class="${a.id === myId ? 'me' : ''} ${a.alive ? '' : 'dead'}"><td>${esc(a.name)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td><td>${a.ping}</td></tr>`).join('');
-    const tbl = (team) => `<table class="t${team}"><tr><th class="team">${TEAM_CN[team]} · ${score[team]}</th><th>击杀</th><th>死亡</th><th>爆头</th><th>延迟</th></tr>${rows(team)}</table>`;
+      .map((a) => `<tr class="${a.id === myId ? 'me' : ''} ${a.alive ? '' : 'dead'}"><td>${esc(a.name)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td></tr>`).join('');
+    const tbl = (team) => `<table class="t${team}"><tr><th class="team">${TEAM_CN[team]} · ${score[team]}</th><th>击杀</th><th>死亡</th><th>爆头</th></tr>${rows(team)}</table>`;
     this.el.boardBody.innerHTML = `<div class="cols">${tbl('BL')}${tbl('GR')}</div>`;
   }
   endScreen(win, score, actors, myId) {
@@ -319,8 +627,17 @@ const PRIM_CARDS = PRIMARIES.map((id) => {
   return `<div class="card" data-w="${id}"><img alt=""><b>${d.name}</b><small>${sub}</small></div>`;
 }).join('');
 
+// 练习面板换枪按钮组（仅目录内：主武器 + 副武器 + 军刀 + 投掷物槽）
+const PR_GUN_BTNS = [
+  ...PRIMARIES.map((id) => ({ slot: 0, id })),
+  { slot: 1, id: 'deagle' },
+  { slot: 2, id: 'knife' },
+  { slot: 3, id: null },
+].map((g) => `<button data-slot="${g.slot}"${g.id ? ` data-w="${g.id}"` : ''}>${(WEAPONS[g.id] || {}).name || '投掷物'}</button>`).join('');
+
 const TEMPLATE = `
 <div id="hud" class="hidden">
+  <div id="blind" class="hidden"></div>
   <div id="score">
     <div class="team bl" id="tBL"><span class="nm">潜伏者</span><span class="pts" id="sBL">0</span></div>
     <div class="mid"><div class="time" id="sTime">10:00</div><div class="goal" id="sGoal"></div></div>
@@ -334,6 +651,12 @@ const TEMPLATE = `
     <div class="vbox" id="arBox"><div class="ic">⛨</div><div class="val" id="arVal">100</div></div>
   </div>
   <div id="slots"></div>
+  <div id="nadeInfo" class="hidden"></div>
+  <div id="slotC4" class="hidden"><span>C4</span><b>5</b></div>
+  <div id="objInfo" class="hidden"><span id="objRound"></span><span id="objAlive"></span></div>
+  <div id="c4State" class="hidden"></div>
+  <div id="objHint" class="hidden"></div>
+  <div id="objProg" class="hidden"><i id="objProgFill"></i><span id="objProgLbl"></span></div>
   <div id="ammo"><div class="wname" id="wName"></div><div class="row"><img class="wicon" id="wIcon" alt=""><span class="mag" id="aMag">30</span><span class="res" id="aRes">/ 90</span></div><div class="hint" id="aHint"></div></div>
   <div id="cross"><i class="t" id="cT"></i><i class="b" id="cB"></i><i class="l" id="cL"></i><i class="r" id="cR"></i></div>
   <div id="hit"><i></i><i></i><i></i><i></i></div>
@@ -344,6 +667,7 @@ const TEMPLATE = `
   <div id="toast"></div>
   <div id="protect"></div>
   <div id="nameTip"></div>
+  <div id="practice" class="hidden"><div class="ph"><b>练习靶场</b><span id="prHits">命中 0</span><span id="prWeapon"></span></div><div id="prTargets"></div><div id="prGuns">${PR_GUN_BTNS}</div></div>
   <div id="board" class="hidden tbl"><h3><span id="boardTitle">运输船 · 团队竞技</span><span>Tab</span></h3><div id="boardBody"></div></div>
   <div id="touch" class="hidden"></div>
 </div>
@@ -361,6 +685,7 @@ const TEMPLATE = `
         <kbd>W A S D</kbd><span>移动　<kbd>Shift</kbd> 静步　<kbd>空格</kbd> 跳　<kbd>C</kbd> 蹲</span>
         <kbd>鼠标左键</kbd><span>开火　<kbd>右键</kbd> 狙击开镜 / 刀重击</span>
         <kbd>1 2 3 4</kbd><span>主武器 / 手枪 / 刀 / 手雷　<kbd>Q</kbd> 快切　<kbd>滚轮</kbd> 切换</span>
+        <kbd>5</kbd><span>C4（携带时）　<kbd>E</kbd> 拆包 / 拾取（拆包优先）　<kbd>G</kbd> 丢弃 C4</span>
         <kbd>R</kbd><span>换弹　<kbd>F</kbd> 检视武器　<kbd>B</kbd> 更换主武器</span>
         <kbd>Tab</kbd><span>计分板　<kbd>Esc</kbd> 暂停 / 设置</span>
       </div>
@@ -368,6 +693,7 @@ const TEMPLATE = `
     </div>
     <div class="opts">
       <div class="opt"><div class="lab">地图</div><div class="seg" data-k="map" id="mapSeg"></div></div>
+      <div class="opt"><div class="lab">模式</div><div class="seg" data-k="mode" id="modeSeg"></div></div>
       <div class="opt"><div class="lab">阵营</div><div class="seg team" data-k="team"><button data-v="BL">潜伏者<small>Black List</small></button><button data-v="GR">保卫者<small>Global Risk</small></button></div></div>
       <div class="opt"><div class="lab">主武器</div><div class="seg" data-k="primary"><button data-v="ak47">AK-47</button><button data-v="m4a1">M4A1</button><button data-v="awm">AWM</button><button data-v="mp5">MP5</button></div></div>
       <div class="row2">
@@ -384,6 +710,12 @@ const TEMPLATE = `
         <div class="opt"><div class="lab">视野 FOV</div><div class="slider" data-k="fov"><input type="range" min="65" max="100" step="1"><span></span></div></div>
         <div class="opt"><div class="lab">音量</div><div class="slider" data-k="vol"><input type="range" min="0" max="1" step="0.05"><span></span></div></div>
       </div>
+      <div class="opt" id="profileBox">
+        <div class="lab">军衔档案</div>
+        <div id="rankRow"><span id="rankName"></span><span id="rankLevel"></span><div class="rankBar"><i id="rankFill"></i></div><span id="rankXp"></span></div>
+        <div class="seg" id="presetSeg"></div>
+        <div class="note hidden" id="profileNote">本地存档不可用，进度仅本次会话有效</div>
+      </div>
       <button class="go" id="btnStart">开 始 游 戏</button>
       <div class="note">点击开始后鼠标将被锁定，按 Esc 暂停。画质切换会重新加载页面。</div>
       <div class="mlinks"><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer">GitHub 源码</a><span>·</span><a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer">X @riba2534</a></div>
@@ -399,13 +731,14 @@ const TEMPLATE = `
   <button class="go" id="btnResume">继 续</button><button class="go sec" id="btnQuit" style="margin-top:10px">退出到主菜单</button>
 </div></div>
 
-<div id="loadout" class="screen hidden"><div class="loadBox"><h2>更换主武器</h2><div class="sub">复活时生效；在出生点内立即生效。副武器沙漠之鹰、军刀、手雷自动配备。</div>
+<div id="loadout" class="screen hidden"><div class="loadBox"><h2>更换主武器</h2><div class="sub">团队竞技：出生点内立即生效，否则复活时生效。爆破：准备期内立即生效，交战期更换下回合生效。副武器沙漠之鹰、军刀、手雷自动配备。</div>
   <div class="cards" id="loadCards">${PRIM_CARDS}</div>
   <button class="go sec" id="btnLoadClose" style="margin-top:14px">确 定（B）</button>
 </div></div>
 
 <div id="end" class="screen hidden"><div class="endBox">
   <div class="res" id="endRes">胜利</div><div class="sc" id="endSc"></div><div class="mvp" id="endMvp"></div><div class="mvp" id="endMe" style="color:#dfe4e8"></div>
+  <div id="endAward" class="hidden"></div>
   <div id="endTable" class="tbl"></div>
   <div style="display:flex;gap:10px;margin-top:16px"><button class="go" id="btnAgain">再 来 一 局</button><button class="go sec" id="btnMenu">主菜单</button></div>
 </div></div>

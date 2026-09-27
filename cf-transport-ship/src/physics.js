@@ -28,6 +28,92 @@ export class Collider {
   toWorldDir(lx, lz) { return [this.c * lx + this.s * lz, -this.s * lx + this.c * lz]; }
 }
 
+// ============== 坡道碰撞体（楔形） ==============
+// 顶面沿局部轴从 y0（轴负端）线性过渡到 y1（轴正端），底面为 min(y0,y1)-thickness 的水平面，
+// 侧壁/底面实体；射线按真实楔形求交（上方空间不阻挡）。yaw 旋转约定与 Collider 相同。
+export class Ramp {
+  constructor(o) {
+    this.isRamp = true;
+    this.x = o.x; this.z = o.z;
+    this.hx = o.sx / 2; this.hz = o.sz / 2;
+    this.yaw = o.yaw || 0;
+    this.c = Math.cos(this.yaw); this.s = Math.sin(this.yaw);
+    this.axis = o.axis === 'z' ? 'z' : 'x';
+    this.y0 = o.y0; this.y1 = o.y1;
+    this.thickness = o.thickness !== undefined ? o.thickness : 0.3;
+    this.hu = this.axis === 'x' ? this.hx : this.hz;   // 沿轴半长
+    this.hv = this.axis === 'x' ? this.hz : this.hx;   // 横向半宽
+    // 顶面平面：y = planeA + planeB * u（u 为沿轴局部坐标）
+    this.planeA = (o.y0 + o.y1) / 2;
+    this.planeB = this.hu > 1e-9 ? (o.y1 - o.y0) / (2 * this.hu) : 0;
+    this.bottom = Math.min(o.y0, o.y1) - this.thickness; // 底面（平）
+    this.top = Math.max(o.y0, o.y1);                     // 包围盒顶，仅作快速剔除
+    this.mat = o.mat || 'concrete';
+    this.solid = o.solid !== false;
+    this.bullet = o.bullet || 'block';
+    this.sight = o.sight !== false;
+    this.surface = o.surface || 'stone';
+    this.tag = o.tag || '';
+    this.stamp = 0;
+    const ex = Math.abs(this.c) * this.hx + Math.abs(this.s) * this.hz;
+    const ez = Math.abs(this.s) * this.hx + Math.abs(this.c) * this.hz;
+    this.minX = this.x - ex; this.maxX = this.x + ex;
+    this.minZ = this.z - ez; this.maxZ = this.z + ez;
+  }
+  toLocal(wx, wz) {
+    const dx = wx - this.x, dz = wz - this.z;
+    return [this.c * dx - this.s * dz, this.s * dx + this.c * dz];
+  }
+  toWorldDir(lx, lz) { return [this.c * lx + this.s * lz, -this.s * lx + this.c * lz]; }
+  // 顶面在 (wx,wz) 处的支撑高度：圆心在矩形外时取最近边处的高度
+  topAt(wx, wz) {
+    const [lx, lz] = this.toLocal(wx, wz);
+    const u = this.axis === 'x'
+      ? Math.max(-this.hx, Math.min(this.hx, lx))
+      : Math.max(-this.hz, Math.min(this.hz, lz));
+    return this.planeA + this.planeB * u;
+  }
+  // 射线 vs 楔形：局部 (u,v,y) 内 6 个半空间（4 竖直侧面 + 水平底 + 斜顶）的凸体裁剪
+  static rayWedge(rp, ox, oy, oz, dx, dy, dz, maxT, res) {
+    const rx = ox - rp.x, rz = oz - rp.z;
+    const ldx = rp.c * dx - rp.s * dz, ldz = rp.s * dx + rp.c * dz;
+    let ou, ov, du, dv;
+    if (rp.axis === 'x') { ou = rp.c * rx - rp.s * rz; ov = rp.s * rx + rp.c * rz; du = ldx; dv = ldz; }
+    else { ou = rp.s * rx + rp.c * rz; ov = rp.c * rx - rp.s * rz; du = ldz; dv = ldx; }
+    // [nu, nv, ny, d]：内部满足 n·p >= d
+    const planes = [
+      [1, 0, 0, -rp.hu], [-1, 0, 0, -rp.hu],
+      [0, 1, 0, -rp.hv], [0, -1, 0, -rp.hv],
+      [0, 0, 1, rp.bottom],
+      [rp.planeB, 0, -1, -rp.planeA],
+    ];
+    let tmin = 0, tmax = maxT, entry = -1;
+    for (let i = 0; i < planes.length; i++) {
+      const p = planes[i];
+      const dist = p[0] * ou + p[1] * ov + p[2] * oy - p[3];
+      const den = p[0] * du + p[1] * dv + p[2] * dy;
+      if (den > -1e-9 && den < 1e-9) { if (dist < 0) return false; continue; }
+      const t = -dist / den;
+      if (den > 0) { if (t > tmin) { tmin = t; entry = i; } }
+      else if (t < tmax) tmax = t;
+    }
+    if (tmin > tmax) return false;
+    if (entry < 0) { // 起点在楔形内
+      res.t = 0; res.exit = tmax; res.nx = -dx; res.ny = -dy; res.nz = -dz; return true;
+    }
+    res.t = tmin; res.exit = tmax;
+    const p = planes[entry];
+    let nu = -p[0], nv = -p[1], ny = -p[2]; // 外法线（局部 u,v,y）
+    // 局部 u/v 轴 -> 世界 XZ；斜顶法线归一化
+    let ux, uz, vx, vz;
+    if (rp.axis === 'x') { ux = rp.c; uz = -rp.s; vx = rp.s; vz = rp.c; }
+    else { ux = rp.s; uz = rp.c; vx = rp.c; vz = -rp.s; }
+    const len = Math.hypot(nu * ux + nv * vx, ny, nu * uz + nv * vz);
+    res.nx = (nu * ux + nv * vx) / len; res.ny = ny / len; res.nz = (nu * uz + nv * vz) / len;
+    return true;
+  }
+}
+
 const CELL = 4;
 
 export class World {
@@ -41,6 +127,11 @@ export class World {
     const c = o instanceof Collider ? o : new Collider(o);
     this.colliders.push(c);
     return c;
+  }
+  addRamp(o) {
+    const r = o instanceof Ramp ? o : new Ramp(o);
+    this.colliders.push(r);
+    return r;
   }
   build() {
     this.grid.clear();
@@ -126,7 +217,10 @@ export class World {
       if (mode === 'bullet' && c.bullet === 'pass') continue;
       if (mode === 'sight' && !c.sight) continue;
       if (mode === 'move' && !c.solid) continue;
-      if (World.rayOBB(c, ox, oy, oz, dx, dy, dz, best, r) && r.t < best) {
+      const struck = c.isRamp
+        ? Ramp.rayWedge(c, ox, oy, oz, dx, dy, dz, best, r)
+        : World.rayOBB(c, ox, oy, oz, dx, dy, dz, best, r);
+      if (struck && r.t < best) {
         best = r.t; hit = c;
         out.nx = r.nx; out.ny = r.ny; out.nz = r.nz; out.exit = r.exit;
       }
@@ -144,7 +238,10 @@ export class World {
     const r = {};
     for (const c of cands) {
       if (c.bullet === 'pass') continue;
-      if (World.rayOBB(c, ox, oy, oz, dx, dy, dz, maxT, r)) hits.push({ t: r.t, exit: r.exit, nx: r.nx, ny: r.ny, nz: r.nz, collider: c });
+      const struck = c.isRamp
+        ? Ramp.rayWedge(c, ox, oy, oz, dx, dy, dz, maxT, r)
+        : World.rayOBB(c, ox, oy, oz, dx, dy, dz, maxT, r);
+      if (struck) hits.push({ t: r.t, exit: r.exit, nx: r.nx, ny: r.ny, nz: r.nz, collider: c });
     }
     hits.sort((a, b) => a.t - b.t);
     return hits;
@@ -178,6 +275,12 @@ export class World {
     const o = {};
     for (const c of cands) {
       if (!c.solid) continue;
+      if (c.isRamp) {
+        if (!World.circleOBB(c, px, pz, r, o)) continue;
+        const surf = c.topAt(px, pz);
+        if (surf <= py + 0.001 || c.bottom >= py + h - 0.001) continue;
+        return true;
+      }
       if (c.top <= py + 0.001 || c.bottom >= py + h - 0.001) continue;
       if (World.circleOBB(c, px, pz, r, o)) return true;
     }
@@ -191,6 +294,13 @@ export class World {
     const o = {};
     for (const c of cands) {
       if (!c.solid) continue;
+      if (c.isRamp) {
+        if (World.circleOBB(c, px, pz, r, o)) {
+          const s = c.topAt(px, pz);
+          if (s <= maxY && s > best) { best = s; bc = c; }
+        }
+        continue;
+      }
       if (c.top > maxY || c.top <= best) continue;
       if (World.circleOBB(c, px, pz, r, o)) { best = c.top; bc = c; }
     }
@@ -216,6 +326,21 @@ export class World {
         for (const c of cands) {
           if (!c.solid) continue;
           const head = p.y + ent.height;
+          if (c.isRamp) {
+            // 楔形：脚下的斜面不算侧壁，高于脚面的楔体按坡顶高度上台阶或推出
+            const surf = c.topAt(p.x, p.z);
+            if (surf <= p.y + 0.001 || c.bottom >= head - 0.001) continue;
+            if (!World.circleOBB(c, p.x, p.z, r, o)) continue;
+            const rise = surf - p.y;
+            if (ent.onGround && rise > 0 && rise <= ent.stepHeight && !this.blocked(p.x, surf, p.z, r * 0.95, ent.height)) {
+              p.y = surf; ent.stepped = (ent.stepped || 0) + rise; any = true; continue;
+            }
+            p.x += o.nx * (o.pen + 0.0005); p.z += o.nz * (o.pen + 0.0005);
+            const vn = ent.vel.x * o.nx + ent.vel.z * o.nz;
+            if (vn < 0) { ent.vel.x -= o.nx * vn; ent.vel.z -= o.nz * vn; }
+            any = true;
+            continue;
+          }
           if (c.top <= p.y + 0.001 || c.bottom >= head - 0.001) continue;
           if (!World.circleOBB(c, p.x, p.z, r, o)) continue;
           // 上台阶

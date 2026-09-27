@@ -1,0 +1,1 @@
+续跑视觉收口。C4 浏览器任务已结束，现在本机浏览器/GPU 资源独占；上次因为与 C4 E2E 并发导致 round3 重拍启动超时而中断，临时脚本修改已保留。请直接重试 round3 截图与采样，明确页面错误/加载时间；不要重复大范围读代码。若 round3 达不到全部色值约束，用已有 round1/round2 数据和实际截图选最佳视觉折中，最多再试一组，尽快写 `.ultra/reports/flagship-visual.md`。命令从工作区根目录直接运行单个 `npm --prefix ...`、`node cf-transport-ship/...`，不要复合 shell。

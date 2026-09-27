@@ -45,9 +45,20 @@ export const WEAPONS = {
     dmgLight: 52, dmgHeavy: 100, rangeLight: 1.9, rangeHeavy: 1.6, rateLight: 0.42, rateHeavy: 1.05, draw: 0.4,
     speed: 1.08, sound: 'knife', hudName: 'KNIFE', mag: 0, reserve: 0,
   },
+  // 投掷物（slot 3 轮换）：radius 为效果半径（与 combat/grenade-effect.js 的默认值一致），
+  // effect 字段是 D 波 Game 接线时的结算器分发键（computeHeBlast / computeFlashEffect / SmokeCloud）。
+  // fuse 递减：闪光 < 烟雾 < HE（闪光近炸、烟雾落点展开、HE 现役 2.6 不动）。
   he: {
-    id: 'he', name: '手雷', slot: 3, type: 'grenade', auto: false,
+    id: 'he', name: '手雷', slot: 3, type: 'grenade', auto: false, effect: 'he',
     dmg: 115, radius: 7.5, fuse: 2.6, count: 1, draw: 0.5, speed: 1.0, sound: 'grenade', hudName: 'HE GRENADE', mag: 1, reserve: 0,
+  },
+  flash: {
+    id: 'flash', name: '闪光弹', slot: 3, type: 'grenade', auto: false, effect: 'flash',
+    dmg: 0, radius: 16, fuse: 1.6, count: 1, draw: 0.5, speed: 1.0, sound: 'flash', hudName: 'FLASHBANG', mag: 1, reserve: 0,
+  },
+  smoke: {
+    id: 'smoke', name: '烟雾弹', slot: 3, type: 'grenade', auto: false, effect: 'smoke',
+    dmg: 0, radius: 3.5, fuse: 2.0, count: 1, draw: 0.5, speed: 1.0, sound: 'smoke', hudName: 'SMOKE', mag: 1, reserve: 0,
   },
 };
 

@@ -1,0 +1,5 @@
+你是 GLM-5.3-Flash HIGH，继续原 BombMatch 核心会话。只编辑 `cf-transport-ship/src/modes/bomb.js`、`cf-transport-ship/tests/unit/bomb-core.test.mjs` 和新报告 `.ultra/reports/bomb-zero-id-fix.md`；不改 Game/AI/UI、其它测试或提交。不要调用子代理/其它模型。注意阶段 3 的其它实现者正在并行修改 Game/bots/HUD；保持文件独占。只有协调者明确下发此提示时才执行。
+
+你是 GLM-5.3-Flash HIGH，继续原 BombMatch 核心会话。只编辑 `cf-transport-ship/src/modes/bomb.js`、`cf-transport-ship/tests/unit/bomb-core.test.mjs`、把 `cf-transport-ship/tests/unit/bomb-runtime.test.mjs` 中记录该缺陷的带原因 skip 测试转为真实断言（仅此一处，不改该文件其它内容），以及新报告 `.ultra/reports/bomb-zero-id-fix.md`；不改 Game/AI/UI、其它测试或提交。不要调用子代理/其它模型。阶段 3 三路实现 lane 已全部结束，当前无其他写入者；协调者已冻结其余源码。
+
+Game 现有玩家 id 为数值 0。当前 `BombMatch` 在 `startRound` 载包、`mergeFacts` 和 `dropIfCarrierDead` 使用 falsy 检查（约 73、97、106 行），把 id 0 当缺失，导致 BL 玩家可能不能持包、事实被丢弃、死亡不掉包。RULES lane 已用真实浏览器探针复现：`startRound(0)` 后 `match.bomb === null`。按公开 API 写一条或少量失败测试（roster 中 BL id0，`startRound(0)`→携包；事实 id0→可安包；死亡→有掉包事件），先运行红态（可复用该 skip 的复现路径），再做最小 null/undefined 守卫修复、跑 focused suite 绿态，必要重构仍绿。检查同模块其它对 actor id 的 falsy 使用但不扩范围。完成后运行 `node --test tests/unit/bomb-core.test.mjs tests/unit/bomb-runtime.test.mjs` 与 `npm run build`，报告真实红绿证据与对阶段 3 合流的契约影响。不要开始合流或改 game.js。
