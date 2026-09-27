@@ -39,13 +39,13 @@ const OUTFIT = {
     pants: [0x2c2d31, 'fab'], jacket: [0x1f2124, 'fab'], vest: [0x2e3128, 'fab'], pouch: [0x3a3d30, 'fab'],
     boots: [0x141414, 'plain'], gloves: [0x18181a, 'plain'], skin: [0xb88c6c, 'plain'], mask: [0x151618, 'fab'],
     head: [0x151618, 'fab'], band: [0xa3161a, 'plain'], armband: [0xb01c1c, 'plain'], goggles: [0x1a1a1a, 'plain'], lens: [0xd66a1a, 'plain'],
-    pads: [0x222326, 'plain'],
+    pads: [0x222326, 'plain'], sole: [0x34353a, 'plain'],
   },
   GR: {
     pants: [0x5e6b7c, 'camo'], jacket: [0x566478, 'camo'], vest: [0x27344a, 'fab'], pouch: [0x2e3c52, 'fab'],
     boots: [0x16161a, 'plain'], gloves: [0x1c1d20, 'plain'], skin: [0xc49a7a, 'plain'], mask: [0x202328, 'fab'],
     head: [0x33404f, 'plain'], band: [0x1a1a1a, 'plain'], armband: [0x1f62c8, 'plain'], goggles: [0x151515, 'plain'], lens: [0xe0c040, 'plain'],
-    pads: [0x2a3340, 'plain'],
+    pads: [0x2a3340, 'plain'], sole: [0x3d444e, 'plain'],
   },
 };
 
@@ -116,6 +116,7 @@ function buildGeometry(team) {
     add(cap(0.068, 0.32), 'shin' + s, 'pants', sh.x, sh.y - 0.2, sh.z);
     add(box(0.12, 0.14, 0.1), 'shin' + s, 'pads', sh.x, sh.y - 0.02, sh.z - 0.06);
     add(box(0.12, 0.13, 0.27), 'foot' + s, 'boots', ft.x, ft.y + 0.03, ft.z - 0.05);
+    add(box(0.125, 0.02, 0.28), 'foot' + s, 'sole', ft.x, ft.y - 0.026, ft.z - 0.05); // 靴底沿
     add(box(0.11, 0.1, 0.14), 'shin' + s, 'boots', sh.x, sh.y - 0.38, sh.z);
     add(box(0.07, 0.1, 0.1), 'thigh' + s, 'pouch', th.x + sx * 0.08, th.y - 0.18, th.z);
   }
@@ -127,6 +128,7 @@ function buildGeometry(team) {
   add(box(0.4, 0.3, 0.25), 'chest', 'jacket', ch.x, ch.y + 0.1, ch.z);
   add(box(0.42, 0.34, 0.29), 'chest', 'vest', ch.x, ch.y + 0.06, ch.z);
   for (let i = 0; i < 3; i++) add(box(0.085, 0.11, 0.05), 'chest', 'pouch', ch.x - 0.1 + i * 0.1, ch.y - 0.02, ch.z - 0.16);
+  for (const bxs of [-0.11, 0.11]) add(box(0.05, 0.3, 0.025), 'chest', 'pouch', ch.x + bxs, ch.y + 0.08, ch.z - 0.152); // 装具带
   add(box(0.3, 0.34, 0.12), 'chest', 'pouch', ch.x, ch.y + 0.05, ch.z + 0.19); // 背包
   add(box(0.03, 0.25, 0.03), 'chest', 'goggles', ch.x + 0.1, ch.y + 0.32, ch.z + 0.2); // 天线
   // 头
@@ -137,6 +139,8 @@ function buildGeometry(team) {
   if (team === 'GR') {
     const helm = new THREE.SphereGeometry(0.128, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55); helm.scale(1, 0.95, 1.08);
     add(helm, 'head', 'head', hd.x, hd.y + 0.12, hd.z + 0.005);
+    add(box(0.2, 0.022, 0.055), 'head', 'pads', hd.x, hd.y + 0.085, hd.z - 0.105); // 盔檐
+    add(box(0.045, 0.024, 0.17), 'head', 'head', hd.x, hd.y + 0.243, hd.z + 0.005); // 盔顶轮廓
     add(box(0.23, 0.05, 0.05), 'head', 'goggles', hd.x, hd.y + 0.155, hd.z - 0.1);
     add(box(0.18, 0.035, 0.02), 'head', 'lens', hd.x, hd.y + 0.155, hd.z - 0.125);
     const mask = sph(0.1); mask.scale(1, 0.62, 1.05);
@@ -153,6 +157,7 @@ function buildGeometry(team) {
   for (const s of ['R', 'L']) {
     const ua = P('upperArm' + s), fa = P('forearm' + s), hn = P('hand' + s);
     add(sph(0.085), 'upperArm' + s, 'jacket', ua.x, ua.y - 0.02, ua.z);
+    add(box(0.115, 0.045, 0.14), 'upperArm' + s, 'pads', ua.x, ua.y + 0.045, ua.z); // 肩垫
     add(cap(0.062, 0.2), 'upperArm' + s, 'jacket', ua.x, ua.y - 0.15, ua.z);
     add(cap(0.066, 0.05), 'upperArm' + s, 'armband', ua.x, ua.y - 0.12, ua.z);
     add(cap(0.052, 0.19), 'forearm' + s, 'jacket', fa.x, fa.y - 0.13, fa.z);

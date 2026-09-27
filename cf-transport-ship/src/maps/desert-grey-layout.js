@@ -71,7 +71,20 @@ W(-44, -43.4, -38, 38, 0, 7, { role: 'bound', m: 'plaster', id: 'boundW' });
 W(43.4, 44, -38, 38, 0, 7, { role: 'bound', m: 'plaster', id: 'boundE' });
 
 // ================== 大体量建筑（封死非通路区域，形成街巷轮廓） ==================
-W(-20, -6, -24, 2, 0, 5.5, { role: 'struct', m: 'plasterB', id: 'bldMidW' });      // 中路西侧楼（B库房）
+// 中路西侧楼（B库房→中央大厅）：外壳包络保持 x[-20,-6] z[-24,2] 高 5.5 不变，
+// 内部掏空为可进入大厅（对应 dg-ref2/ref2-a01 木门与 ref2-a05 大空间室内）。
+// 东墙面向中路留 2.6m 门洞（z[-13,-10.4]），4.4 起为顶板；外轮廓与檐口线保持不变。
+W(-6.4, -6, -24, -13, 0, 4.4, { role: 'wall', m: 'plasterB', id: 'midHallE1' });   // 大厅东墙北段
+W(-6.4, -6, -10.4, 2, 0, 4.4, { role: 'wall', m: 'plasterB', id: 'midHallE2' });   // 大厅东墙南段
+W(-6.4, -6, -13, -10.4, 2.6, 4.4, { role: 'wall', m: 'plasterB', id: 'midHallLintel' }); // 门洞楣
+W(-20, -19.6, -24, 2, 0, 4.4, { role: 'wall', m: 'plasterB', id: 'midHallW' });    // 大厅西墙
+W(-20, -6, -24, -23.6, 0, 4.4, { role: 'wall', m: 'plasterB', id: 'midHallS' });   // 大厅南墙
+W(-20, -6, 1.6, 2, 0, 4.4, { role: 'wall', m: 'plasterB', id: 'midHallN' });       // 大厅北墙（背靠桥下）
+W(-20, -6, -24, 2, 4.4, 5.5, { role: 'ceil', m: 'concrete', id: 'midHallRoof' });  // 大厅顶板（保持 5.5 外轮廓）
+S(-6.6, 1.3, -12.45, 0.2, 2.6, 1.1, { role: 'door', m: 'woodDoor', mat: 'wood', bullet: 'pen', surface: 'wood', id: 'midHallDoorLeaf' }); // 半开木门扇（向厅内敞开）
+S(-12, 1, -8, 2, 2, 2, { role: 'cover', m: 'wood', mat: 'wood', bullet: 'pen', surface: 'wood', tag: 'crate', id: 'midHallCrate1' });     // 室内木箱
+S(-10.5, 0.8, -19, 1.6, 1.6, 1.6, { role: 'cover', m: 'wood', mat: 'wood', bullet: 'pen', surface: 'wood', tag: 'crate', id: 'midHallCrate2' });
+S(-16, 1.3, -16, 1.6, 2.6, 1.6, { role: 'cover', m: 'wood', mat: 'wood', bullet: 'pen', surface: 'wood', tag: 'crate', id: 'midHallCrate3' });
 W(-26, -6, 6, 8, 0, 2.6, { role: 'struct', m: 'plasterB', id: 'bldUpBase' });      // 上层坑道口下方基座
 W(-38, -32, 6, 8, 2.6, 5.5, { role: 'struct', m: 'plasterB', id: 'bldUpW' });      // 坑道西侧楼上部
 W(34, 44, -10, 38, 0, 5.5, { role: 'struct', m: 'plasterB', id: 'bldEast' });      // A大街东侧楼

@@ -175,6 +175,9 @@ export function buildDesertGrey(scene, T, world, opts = {}) {
     const top = so.y + so.sy / 2;
     box('roofTile', so.x, top + 0.12, so.z, so.sx + 0.7, 0.24, so.sz + 0.7, 0);
   }
+  // 中央大厅（原 bldMidW 实心楼）掏空为壳体后无 sy≥4 的 struct，手补与原檐口同位的屋顶盖板
+  // （原 struct x[-20,-6] z[-24,2] top 5.5 → roofTile y=5.62, 外扩 0.7），保持外轮廓不变。
+  box('roofTile', -13, 5.62, -11, 14.7, 0.24, 26.7, 0);
 
   // ---------- 3.5 D1 墙基 + D5 墙地交界 AO（纯 scene 附加，零碰撞；唯一外扩 6cm 条带） ----------
   const aoG = batch('ao');

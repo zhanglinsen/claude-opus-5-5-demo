@@ -1,6 +1,8 @@
 // 沙漠灰材质（阶段 4 画面升级）：程序化 Canvas 漫反射 + 法线 + 粗糙度贴图组。
 // 全部离线自包含（无网络资源）；uv 为「每块纹理覆盖的米数」，构建器按面尺寸平铺。
 // 画质分档：low=128px 且无贴图；medium=256px；high=512px。种子固定，截图可复现。
+// 照片增强（medium/high）：打包石墙/地面照片烘入 2x2 镜像拼贴合成画布（medium 512 / high 1024），
+// 污渍 fbm 打破镜像对称，三通道（map/roughness/normal）同一过程派生；texture.repeat=0.5 守恒世界尺度。
 // 风化/磨损（水渍、裂缝、锈蚀、磨光）与参考图一致：暖沙灰砌块墙 + 强日照硬阴影。
 // lane M（对照 visual-plan.md §3.1）：M1 底色暖化（蓝通道 ×0.96 抵消冷光）、M2 砌块行缝/竖缝、
 // M3 sandPath 道路面、M4 plasterBase 墙基、M5 stoneTrim 规整石作；新增种子固定在 92xx 段。
@@ -42,6 +44,65 @@ function finish(c, hgt, rough, S, useNormal) {
   }
   rctx.putImageData(img, 0, 0);
   out.roughnessMap = tex(rc, { srgb: false });
+  return out;
+}
+// 粗糙度 Float32 场 → 灰度画布（0-1 直接编码）
+function roughCanvasOf(rough, S) {
+  const rc = mkCanvas(S), rctx = rc.getContext('2d');
+  const img = rctx.createImageData(S, S), d = img.data;
+  for (let i = 0; i < S * S; i++) {
+    const v = Math.max(0, Math.min(1, rough[i])) * 255;
+    d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
+  }
+  rctx.putImageData(img, 0, 0);
+  return rc;
+}
+
+// ---------- 照片合成管线：2x2 镜像拼贴 + 固定种子大尺度污渍（打破镜像“蝴蝶”伪影） ----------
+// 打包照片烘入 2x2 镜像拼贴画布，污渍 fbm 跨拼块连续、破坏 MirroredRepeat 的对称可辨识性；
+// 颜色/粗糙度/法线三通道在同一合成过程派生（污渍同时驱动颜色 multiply 与粗糙度场）。
+// 世界尺度守恒：画布含 2x2 拼块 → texture.repeat=0.5，画布覆盖 2*uv 米，单拼块仍占 uv 米。
+function compositePhoto(srcImg, CS, o = {}) {
+  const T = CS >> 1;
+  const color = mkCanvas(CS), cctx = color.getContext('2d');
+  cctx.drawImage(srcImg, 0, 0, T, T);
+  cctx.save(); cctx.translate(CS, 0); cctx.scale(-1, 1); cctx.drawImage(srcImg, 0, 0, T, T); cctx.restore();
+  cctx.save(); cctx.translate(0, CS); cctx.scale(1, -1); cctx.drawImage(srcImg, 0, 0, T, T); cctx.restore();
+  cctx.save(); cctx.translate(CS, CS); cctx.scale(-1, -1); cctx.drawImage(srcImg, 0, 0, T, T); cctx.restore();
+
+  const seed = o.seed ?? 9250;
+  const stainA = fbm(CS, CS, 3, 3, 4, seed);      // 大尺度污渍（拼贴缝两侧连续）
+  const stainB = fbm(CS, CS, 7, 7, 3, seed + 7);  // 中尺度色斑
+  const img = cctx.getImageData(0, 0, CS, CS), d = img.data;
+  const hgt = new Float32Array(CS * CS), rough = new Float32Array(CS * CS);
+  const stainMul = o.stainMul ?? 0.16, eo = o.edge ?? 0.05, bo = o.bottom ?? 0;
+  const roughMid = o.roughMid ?? 0.96, roughVar = o.roughVar ?? 0.08, roughLo = o.roughLo ?? 0.93;
+  for (let y = 0; y < CS; y++) for (let x = 0; x < CS; x++) {
+    const i = y * CS + x, i4 = i * 4, sa = stainA[i], sb = stainB[i];
+    // 污渍 multiply（围绕 1.0 的低幅度调制）
+    let m = 1 - (sa - 0.5) * stainMul - (sb - 0.5) * stainMul * 0.6;
+    // 画布边缘 + 底部 env-occlusion 式轻微加深（底部权重更大，仿墙脚积尘）
+    const eb = Math.min(x, CS - 1 - x, y, CS - 1 - y);
+    m *= 1 - eo * Math.max(0, 1 - eb / (CS * 0.15));
+    if (bo > 0) m *= 1 - bo * Math.max(0, 1 - y / (CS * 0.35));
+    let rr = d[i4] * m, gg = d[i4 + 1] * m, bb = d[i4 + 2] * m, ruts = 0;
+    if (o.ruts) { // 车辙/磨损带（噪声扰动横带，种子固定；同一污渍场驱动，位置与颜色污渍呼应）
+      const band = Math.sin((y / CS) * Math.PI * 3 + sa * 4) * 0.5 + 0.5;
+      ruts = Math.max(0, band - 0.6) * 1.5;
+      rr *= 1 - ruts * 0.16; gg *= 1 - ruts * 0.16; bb *= 1 - ruts * 0.14;
+    }
+    d[i4] = rr; d[i4 + 1] = gg; d[i4 + 2] = bb; d[i4 + 3] = 255;
+    hgt[i] = (rr * 0.3 + gg * 0.45 + bb * 0.25) / 255; // 亮度场→弱强度法线
+    // 粗糙度与颜色同一污渍驱动：污渍处更糙、车辙压实处更光滑
+    rough[i] = Math.max(roughLo, Math.min(1, roughMid + (sa - 0.5) * roughVar - ruts * 0.1));
+  }
+  cctx.putImageData(img, 0, 0);
+  const out = {
+    map: tex(color),
+    normalMap: tex(normalFromHeight(hgt, CS, CS, 1.3), { srgb: false }),
+    roughnessMap: tex(roughCanvasOf(rough, CS), { srgb: false }),
+  };
+  for (const t of [out.map, out.normalMap, out.roughnessMap]) t.repeat.set(0.5, 0.5);
   return out;
 }
 
@@ -422,35 +483,71 @@ export function createDesertMaterials(opts = {}) {
     lamp: { mat: new THREE.MeshStandardMaterial({ color: 0xfff1cf, emissive: 0xffdf9e, emissiveIntensity: 3.0, roughness: 0.4 }), uv: 1 },
   };
   // 离线打包的旧石墙贴图：只在均衡/精致档启用，低档继续用轻量程序纹理。
-  // 镜像重复消除源图边界色差；等图片解码完成后才替换程序贴图，避免开场白闪。
+  // 图片解码完成后才合成替换程序贴图，避免开场白闪；合成失败退回照片直贴（标量粗糙度仍生效）。
   if (q !== 'low') {
+    const CS = q === 'high' ? 1024 : 512; // 合成画布预算：medium ≤512px / high ≤1024px
     new THREE.TextureLoader().load(wallTextureUrl, (wall) => {
       wall.colorSpace = THREE.SRGBColorSpace;
       wall.wrapS = wall.wrapT = THREE.MirroredRepeatWrapping;
       wall.anisotropy = 4;
       wall.needsUpdate = true;
-      for (const [material, tint] of [[def.plaster.mat, 0xf2ede4], [def.plasterB.mat, 0xe9e3d9]]) {
-        const oldMap = material.map, oldNormal = material.normalMap;
-        material.map = wall;
-        material.color.setHex(tint);
-        material.normalMap = null; // 原程序凹凸图与新石缝不对齐
+      let compositeOk = true;
+      // plaster/plasterB 用不同污渍种子，A 大与 B 洞墙面污渍分布互相错开
+      for (const [material, tint, seed] of [[def.plaster.mat, 0xf2ede4, 9252], [def.plasterB.mat, 0xe9e3d9, 9257]]) {
+        const oldMap = material.map, oldNormal = material.normalMap, oldRough = material.roughnessMap;
+        // B1b：程序粗糙度图按旧程序 albedo 生成、与照片石缝错位——解挂并改标量基线
+        material.roughnessMap = null;
+        material.roughness = 0.9;
+        oldRough?.dispose();
+        let comp = null;
+        try { comp = compositePhoto(wall.image, CS, { seed, bottom: 0.1 }); } catch { compositeOk = false; }
+        if (comp) { // 三通道来自同一合成过程（颜色 + 污渍驱动粗糙度 + 亮度派生弱法线）
+          material.map = comp.map;
+          material.color.setHex(tint);
+          material.normalMap = comp.normalMap;
+          material.roughnessMap = comp.roughnessMap;
+        } else { // 退回照片直贴（无法线，粗糙度用标量）
+          material.map = wall;
+          material.color.setHex(tint);
+          material.normalMap = null;
+        }
         material.needsUpdate = true;
         oldMap?.dispose(); oldNormal?.dispose();
       }
+      if (compositeOk) wall.dispose(); // 照片已烘入合成画布，释放源图显存
     });
     new THREE.TextureLoader().load(groundTextureUrl, (ground) => {
       ground.colorSpace = THREE.SRGBColorSpace;
       ground.wrapS = ground.wrapT = THREE.MirroredRepeatWrapping;
       ground.anisotropy = 4;
       ground.needsUpdate = true;
-      for (const [material, tint] of [[def.sand.mat, 0xffffff], [def.sandPath.mat, 0xe6ded2]]) {
-        const oldMap = material.map, oldNormal = material.normalMap;
-        material.map = ground;
-        material.color.setHex(tint);
-        material.normalMap = null;
+      let compositeOk = true;
+      // sand 保亮沙基调只叠轻污渍；sandPath 叠固定种子车辙/磨损带，减轻地面均匀感
+      for (const [material, tint, seed, o] of [
+        [def.sand.mat, 0xffffff, 9262, { roughMid: 0.97, roughVar: 0.06, roughLo: 0.94, edge: 0.04 }],
+        [def.sandPath.mat, 0xe6ded2, 9267, { roughMid: 0.97, roughVar: 0.06, roughLo: 0.94, edge: 0.04, ruts: true }],
+      ]) {
+        const oldMap = material.map, oldNormal = material.normalMap, oldRough = material.roughnessMap;
+        // B1b：同墙面处理——解挂错位程序粗糙度图并定标量基线
+        material.roughnessMap = null;
+        material.roughness = 0.85;
+        oldRough?.dispose();
+        let comp = null;
+        try { comp = compositePhoto(ground.image, CS, { seed, ...o }); } catch { compositeOk = false; }
+        if (comp) {
+          material.map = comp.map;
+          material.color.setHex(tint);
+          material.normalMap = comp.normalMap;
+          material.roughnessMap = comp.roughnessMap;
+        } else { // 退回照片直贴
+          material.map = ground;
+          material.color.setHex(tint);
+          material.normalMap = null;
+        }
         material.needsUpdate = true;
         oldMap?.dispose(); oldNormal?.dispose();
       }
+      if (compositeOk) ground.dispose(); // 照片已烘入合成画布，释放源图显存
     });
   }
   const paint = (t) => {

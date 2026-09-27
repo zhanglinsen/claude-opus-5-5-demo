@@ -36,10 +36,11 @@ export class ViewModel {
     scene.add(this.fill);
     this.muzzleLight = new THREE.PointLight(0xffb060, 0, 1.5, 2);
     scene.add(this.muzzleLight);
-    // 手臂
+    // 手臂（手套/袖套基色轻度提亮 + 粗糙度微调：无 IBL 时靠直射与半球光保持结构可辨，
+    // 避免深色布料在背光/洞内融为剪影；灯光强度不动，保留场景明暗对比）
     const m = gunMaterials();
-    this.gloveMat = new THREE.MeshStandardMaterial({ color: 0x1b1b1d, roughness: 0.62, metalness: 0.05, normalMap: m.black.normalMap, normalScale: new THREE.Vector2(0.5, 0.5) });
-    this.sleeveMat = new THREE.MeshStandardMaterial({ color: 0x222326, roughness: 0.9, metalness: 0, normalMap: m.black.normalMap, normalScale: new THREE.Vector2(0.8, 0.8) });
+    this.gloveMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2f, roughness: 0.55, metalness: 0.05, normalMap: m.black.normalMap, normalScale: new THREE.Vector2(0.5, 0.5) });
+    this.sleeveMat = new THREE.MeshStandardMaterial({ color: 0x2e3034, roughness: 0.85, metalness: 0, normalMap: m.black.normalMap, normalScale: new THREE.Vector2(0.8, 0.8) });
     this.cuffMat = new THREE.MeshStandardMaterial({ color: 0xb01c1c, roughness: 0.8 });
     this.arms = {};
     for (const s of ['R', 'L']) {

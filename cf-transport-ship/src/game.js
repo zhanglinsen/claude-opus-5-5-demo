@@ -101,7 +101,7 @@ export class Game {
       envOpts.shadowBox = { x0: B.x0 - 4, x1: B.x1 + 4, y0: -3, y1: 26, z0: B.z0 - 4, z1: B.z1 + 4 };
     }
     this.env = new Environment(this.renderer.renderer, this.renderer.scene, this.opts.quality, envOpts);
-    this.env.extraScenes = [this.renderer.vmScene];
+    this.env.registerExtraScene(this.renderer.vmScene); // 注册即绑定当前 PMREM：修复首局白天武器场景无环境反射（B1a）
     this.env.apply(this.opts.tod);
     this.fx = new Effects(this.renderer.scene, this.T, this.renderer.camera);
     // 船用氛围（烟囱排烟/海鸥）只对提供氛围锚点的地图启用

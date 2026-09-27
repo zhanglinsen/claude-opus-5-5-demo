@@ -156,6 +156,16 @@ function deckTextures() {
     ctx.fillStyle = `rgba(160,165,160,${0.03 + rnd() * 0.06})`;
     ctx.fillRect(x, y, L, 1 + rnd() * 2);
   }
+  // 磨损交叉划痕（低对比度，成对交叉）
+  for (let i = 0; i < 70; i++) {
+    const x = rnd() * S, y = rnd() * S, a = rnd() * Math.PI, L = 24 + rnd() * 90;
+    ctx.strokeStyle = `rgba(150,155,148,${(0.04 + rnd() * 0.06).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); ctx.stroke();
+    const a2 = a + 0.6 + rnd() * 1.2, L2 = 20 + rnd() * 60;
+    ctx.strokeStyle = `rgba(140,145,140,${(0.04 + rnd() * 0.05).toFixed(3)})`;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a2) * L2, y + Math.sin(a2) * L2); ctx.stroke();
+  }
   // 锈斑与油污
   const rustMask = fbm(S, S, 6, 6, 5, 104);
   paintNoise(ctx, S, S, rustMask, (v, r, g, b, i) => {
@@ -168,10 +178,12 @@ function deckTextures() {
   const hgt = new Float32Array(S * S);
   for (let i = 0; i < S * S; i++) hgt[i] = n3[i] * 0.25 + n2[i] * 0.08;
   const seam = (x0, y0, x1, y1) => {
-    ctx.strokeStyle = 'rgba(30,32,33,0.8)'; ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(22,24,25,0.9)'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-    ctx.strokeStyle = 'rgba(140,140,135,0.35)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(160,162,155,0.5)'; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(x0 + 2, y0 + 2); ctx.lineTo(x1 + 2, y1 + 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(160,162,155,0.28)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0 - 2, y0 - 2); ctx.lineTo(x1 - 2, y1 - 2); ctx.stroke();
   };
   for (const p of [0, 512]) { seam(p + 1, 0, p + 1, S); seam(0, p + 1, S, p + 1); }
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
@@ -183,6 +195,14 @@ function deckTextures() {
   // 防滑点（稀疏）
   for (let i = 0; i < 4000; i++) {
     const x = (rnd() * S) | 0, y = (rnd() * S) | 0;
+    hgt[y * S + x] += 0.6;
+  }
+  // 焊缝两侧防滑点加密（边缘防滑带，密度变化）
+  for (let i = 0; i < 2200; i++) {
+    const along = (rnd() * S) | 0, band = 6 + rnd() * 26;
+    const horiz = rnd() < 0.5, base = Math.round(rnd()) * 512;
+    const off = (((rnd() < 0.5 ? base + band : base - band) % S) + S) % S;
+    const x = horiz ? along : off, y = horiz ? off : along;
     hgt[y * S + x] += 0.6;
   }
   // 螺栓
@@ -273,6 +293,16 @@ function containerSide(color, W, H, ribs, seed, hgt) {
     const x = rnd() * W, y = rnd() * H;
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (rnd() - 0.5) * 60, y + (rnd() - 0.5) * 12); ctx.stroke();
   }
+  // 棱边磨白（上下横梁与角柱内缘 1-2px 浅色磨损）
+  const postW = W * 0.03, railT = H * 0.07;
+  ctx.fillStyle = 'rgba(215,210,198,0.3)';
+  ctx.fillRect(0, railT - 1, W, 1.5); ctx.fillRect(0, H - railT - 1, W, 1.5);
+  ctx.fillRect(postW - 1, railT, 1.5, H - 2 * railT); ctx.fillRect(W - postW - 1, railT, 1.5, H - 2 * railT);
+  // 底部锈带（渐变 + 流挂）
+  const brg = ctx.createLinearGradient(0, H * 0.84, 0, H);
+  brg.addColorStop(0, 'rgba(100,55,26,0)'); brg.addColorStop(1, 'rgba(100,55,26,0.5)');
+  ctx.fillStyle = brg; ctx.fillRect(0, H * 0.84, W, H * 0.16);
+  rustStreaks(ctx, W, H, rnd, 12, H * 0.8, H * 0.18, 0.3);
   return c;
 }
 
@@ -320,6 +350,16 @@ function containerDoor(color, seed) {
   for (let i = 0; i < 5; i++) ctx.fillRect(W * 0.58 + 8, H * 0.14 + 8 + i * 10, 60 + rnd() * 14, 4);
   rustStreaks(ctx, W, H, rnd, 30, railT, H * 0.5, 0.35);
   blobs(ctx, rnd, W, H, 14, 5, 22, '95,50,25', 0.2, 0.5);
+  // 门缝两侧磨白 1-2px（中缝 x=W/2）
+  ctx.fillStyle = 'rgba(215,210,198,0.28)';
+  ctx.fillRect(W / 2 - 5, railT, 1.5, H - 2 * railT);
+  ctx.fillRect(W / 2 + 3.5, railT, 1.5, H - 2 * railT);
+  // 上下横梁棱边磨白
+  ctx.fillRect(0, railT - 1, W, 1.5); ctx.fillRect(0, H - railT - 1, W, 1.5);
+  // 底部锈带
+  const brg = ctx.createLinearGradient(0, H * 0.84, 0, H);
+  brg.addColorStop(0, 'rgba(100,55,26,0)'); brg.addColorStop(1, 'rgba(100,55,26,0.5)');
+  ctx.fillStyle = brg; ctx.fillRect(0, H * 0.84, W, H * 0.16);
   return { map: c, hgt, W, H };
 }
 
@@ -461,6 +501,17 @@ function paintedSteel(seed, rgb, opts = {}) {
   const c = mkCanvas(S, S), ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`; ctx.fillRect(0, 0, S, S);
   paintNoise(ctx, S, S, n, (v, r, g, b, i) => { const k = 0.82 + v * 0.28 + (n2[i] - 0.5) * 0.06; return [r * k, g * k, b * k]; });
+  // 板缝分块：每块细微明度差（±2-3%），先画块再加缝，保证缝线清晰
+  for (let by = 0; by < S; by += 128) for (let bx = 0; bx < S; bx += 128) {
+    const v = (rnd() - 0.5) * 0.055;
+    ctx.fillStyle = v > 0 ? `rgba(255,255,255,${v.toFixed(3)})` : `rgba(0,0,0,${(-v).toFixed(3)})`;
+    ctx.fillRect(bx, by, 128, 128);
+  }
+  // 水平板缝 1px 深色 + 高度凸起（与法线对齐）
+  for (let y = 128; y < S; y += 128) {
+    ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.fillRect(0, y, S, 1);
+    for (let x = 0; x < S; x++) hgt[y * S + x] += 0.3;
+  }
   // 加强筋（竖向）
   if (opts.stiffeners !== false) {
     for (let x = 0; x < S; x += 128) {
@@ -473,6 +524,25 @@ function paintedSteel(seed, rgb, opts = {}) {
   }
   for (let i = 0; i < S * S; i++) hgt[i] += n2[i] * 0.05;
   rustStreaks(ctx, S, S, rnd, opts.rust ?? 30, 0, S * 0.6, 0.3);
+  // 大尺度锈水垂挂（2 层，自板缝向下渐隐，低密度不遮细节）
+  const streakN = fbm(S, S, 3, 12, 3, seed + 7);
+  for (let layer = 0; layer < 2; layer++) {
+    const cnt = layer === 0 ? 7 : 4;
+    for (let i = 0; i < cnt; i++) {
+      const x0 = Math.round(rnd() * 8 - 0.25) * (S / 8); // 对齐竖缝位置
+      const wd = 6 + rnd() * 22, y0 = rnd() * S * 0.35, L = S * (0.3 + rnd() * 0.4);
+      const a = (layer ? 0.05 : 0.09) * (0.6 + rnd() * 0.8);
+      const steps = 14;
+      for (let s2 = 0; s2 < steps; s2++) {
+        const t = s2 / steps;
+        const ni = (((y0 + t * L) | 0) % S) * S + (((x0 + wd / 2) | 0) % S);
+        const fade = (1 - t) * (0.6 + streakN[ni]);
+        ctx.fillStyle = `rgba(112,58,26,${(a * fade).toFixed(3)})`;
+        const wob = Math.sin(t * 9 + i) * 2;
+        ctx.fillRect(x0 + wob, y0 + t * L, wd, L / steps + 1);
+      }
+    }
+  }
   blobs(ctx, rnd, S, S, 16, 4, 20, '110,60,30', 0.2, 0.5);
   const gd = ctx.createLinearGradient(0, S * 0.75, 0, S);
   gd.addColorStop(0, 'rgba(40,35,30,0)'); gd.addColorStop(1, 'rgba(40,35,30,0.4)');

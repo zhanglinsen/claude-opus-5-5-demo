@@ -261,9 +261,22 @@ export class Environment {
     scene.fog = new THREE.FogExp2(this.preset.fog, this.preset.fogDensity);
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.envRT = null;
+    // 额外场景（如 vmScene）注册表：buildEnvMap 重建时同步绑定 environment
+    this.extraScenes = [];
     this.shipDist = 0;
     this.shipSpeed = opts.shipSpeed ?? 6.5;
     this.apply('day');
+  }
+  // 显式注册额外场景（如武器 vmScene）：注册时立即绑定当前环境图，
+  // 覆盖"构造器 apply('day') 先于 game 挂载 extraScenes → 缓存命中跳过重建"的时序缺口（B1a）。
+  // 后续 apply() 环境键变化时由 buildEnvMap 的同步循环兜底更新。
+  registerExtraScene(scene) {
+    if (!scene || this.extraScenes.includes(scene)) return;
+    this.extraScenes.push(scene);
+    if (this.envRT) {
+      scene.environment = this.envRT.texture;
+      scene.environmentIntensity = this.preset.envInt;
+    }
   }
   apply(name) {
     // 陆地地图（ocean=false 的沙漠灰）把 day/dusk 映射到沙漠日照档；

@@ -37,9 +37,11 @@ export function gunMaterials() {
   const w = wearTextures();
   const mk = (color, rough, metal, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, roughnessMap: w.rough, normalMap: w.nrm, normalScale: new THREE.Vector2(0.3, 0.3), ...extra });
   M = {
-    metal: mk(0x2b2d30, 0.42, 0.85),
-    black: mk(0x16171a, 0.6, 0.35),
-    steel: mk(0x8e939a, 0.28, 0.95),
+    // 基色适度提亮 + 金属度小幅回调：IBL 绑定后深色金属靠环境反射出结构层次，
+    // 过暗基色（旧 0x2b2d30/0x16171a）反射也近黑，背光/洞内成纯黑剪影（B1a 波）。
+    metal: mk(0x3a3d42, 0.42, 0.78),
+    black: mk(0x24262b, 0.6, 0.3),
+    steel: mk(0x8e939a, 0.28, 0.88),
     wood: new THREE.MeshStandardMaterial({ map: w.wood, roughness: 0.55, metalness: 0.05, normalMap: w.nrm, normalScale: new THREE.Vector2(0.4, 0.4) }),
     bakelite: mk(0x6a2e14, 0.45, 0.1),
     olive: mk(0x4d5638, 0.62, 0.2),
