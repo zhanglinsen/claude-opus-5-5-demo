@@ -59,7 +59,9 @@ function persist() {
 }
 const roots = JSON.parse(arg('--roots', '{}'));
 const runs = JSON.parse(arg('--runs', '[]'));
-const BASE_PORT = 8930;
+// 端口冲突防线：孤儿服务器会让整轮 EADDRINUSE 崩溃（23:48 窗口即毁于此）。
+// 可用 PAIR_BASE_PORT 覆盖；默认从 8930 起按根递增。
+const BASE_PORT = Number(process.env.PAIR_BASE_PORT || 8930);
 
 const results = {
   tool: 'accept-gpu-pair',
