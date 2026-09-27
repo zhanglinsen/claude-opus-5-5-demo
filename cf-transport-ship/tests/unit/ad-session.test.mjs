@@ -100,17 +100,128 @@ test('播放中平台才 resolve(ok)：请求等待 adEnded 才收口', async ()
   assert.equal((await pending).status, AD_STATUS.PLAYED);
 });
 
-test('无开始信号的 resolve(ok)：视为机会消耗，无播放、无暂停', async () => {
+test('无开始信号的 resolve(ok)：握手超时按机会消耗收口，无播放、无暂停', async () => {
   const ctrl = makeControls();
   const session = new AdSession({
     requestAd: async () => AD_STATUS.OK,
     controls: ctrl.api,
+    watchdog: { handshakeMs: 10 },
   });
   const result = await session.request(AD_BREAKS.MATCH_END);
   assert.equal(result.status, AD_STATUS.PLAYED);
   assert.equal(result.started, false);
   assert.equal(ctrl.simPaused, false);
   assert.equal(ctrl.s.muted, false);
+});
+
+test('F4 竞态：resolve(ok) 后 beforeAd 异步迟到，真实播放仍必暂停静音并等收口', async () => {
+  const ctrl = makeControls();
+  const session = new AdSession({
+    requestAd: () => Promise.resolve(AD_STATUS.OK),
+    controls: ctrl.api,
+    watchdog: { handshakeMs: 30 },
+  });
+  const pending = session.request(AD_BREAKS.MATCH_END);
+  await new Promise((r) => setTimeout(r, 0)); // 平台 resolve 落地 → 进入握手等待
+  assert.equal(session.state, 'handshake');
+  session.adStarted(); // Y8 beforeAd 在 resolve(ok) 之后才到
+  assert.equal(session.state, 'playing');
+  assert.equal(ctrl.simPaused, true);   // 绝不漏暂停
+  assert.equal(ctrl.s.muted, true);     // 绝不漏静音
+  session.adEnded();
+  const result = await pending;
+  assert.equal(result.status, AD_STATUS.PLAYED);
+  assert.equal(result.started, true);
+  assert.equal(ctrl.simPaused, false);
+  assert.equal(ctrl.s.muted, false);
+});
+
+test('F3 controls 抛错：暂停/静音仍成对施加与清除，Promise 不挂起', async () => {
+  const s = { muted: false };
+  const session = new AdSession({
+    requestAd: () => new Promise(() => {}), // 回调驱动
+    controls: {
+      isUserPaused: () => false,
+      enterAdPause() { throw new Error('pause bug'); },
+      exitAdPause() { throw new Error('exit bug'); },
+      setAdMuted(on) { s.muted = !!on; },
+    },
+  });
+  const pending = session.request(AD_BREAKS.MATCH_END);
+  assert.equal(session.adStarted(), true);
+  assert.equal(s.muted, true);   // enterAdPause 抛错不阻断静音
+  assert.equal(session.adEnded(), true);
+  assert.equal(s.muted, false);  // exitAdPause 抛错不阻断恢复
+  const result = await pending;  // 不挂起
+  assert.equal(result.status, AD_STATUS.PLAYED);
+  assert.equal(session.state, 'idle');
+});
+
+test('F5 旧请求回调不得污染新请求：epoch 句柄在新请求开始后失效', async () => {
+  const ctrl = makeControls();
+  const captured = [];
+  const session = new AdSession({
+    requestAd: (_bp, cb) => { captured.push(cb); return Promise.resolve(AD_STATUS.OK); },
+    controls: ctrl.api,
+    watchdog: { handshakeMs: 10 },
+  });
+  const first = await session.request(AD_BREAKS.MATCH_END); // 握手超时收口
+  assert.equal(first.started, false);
+  const second = session.request(AD_BREAKS.MENU_RETURN);
+  assert.equal(captured[0].started(), false); // 旧请求句柄已失效：不暂停、不静音
+  assert.equal(ctrl.simPaused, false);
+  assert.equal(session.adStarted(), true);  // 当前请求的全局入口仍有效
+  assert.equal(ctrl.simPaused, true);
+  session.adEnded();
+  assert.equal((await second).status, AD_STATUS.PLAYED);
+  assert.equal(ctrl.s.pauseCalls, 1);
+});
+
+test('F6 看门狗：SDK 播放后永不回调结束时，恢复暂停静音并收口，游戏不挂起', async () => {
+  const ctrl = makeControls();
+  const events = [];
+  const session = new AdSession({
+    requestAd: () => new Promise(() => {}), // 永不 resolve、永不回调
+    controls: ctrl.api,
+    watchdog: { handshakeMs: 10, playingMs: 20 },
+    onEvent: (type, p) => events.push([type, p]),
+  });
+  const pending = session.request(AD_BREAKS.MATCH_END);
+  session.adStarted();
+  assert.equal(ctrl.simPaused, true);
+  const result = await pending;
+  assert.equal(result.status, AD_STATUS.PLAYED);
+  assert.equal(result.started, true);
+  assert.equal(result.watchdog, true);
+  assert.equal(ctrl.simPaused, false); // 看门狗兜底恢复
+  assert.equal(ctrl.s.muted, false);
+  assert.equal(session.state, 'idle');
+});
+
+test('F8 销毁：挂起请求安全收口、播放中先恢复暂停静音、回调与监听全部失效', async () => {
+  const ctrl = makeControls();
+  const events = [];
+  const session = new AdSession({
+    requestAd: () => new Promise(() => {}),
+    controls: ctrl.api,
+    onEvent: (type) => events.push(type),
+  });
+  const pending = session.request(AD_BREAKS.MATCH_END);
+  session.adStarted();
+  assert.equal(session.close('destroyed'), true);
+  const result = await pending; // 挂起请求不悬挂
+  assert.equal(result.status, AD_STATUS.ERROR);
+  assert.equal(result.reason, 'destroyed');
+  assert.equal(ctrl.simPaused, false); // 播放中销毁：先恢复
+  assert.equal(ctrl.s.muted, false);
+  const n = events.length;
+  assert.equal(session.adEnded(), false);       // 销毁后回调入口全部失效
+  assert.equal(session.adStarted(), false);
+  assert.equal(events.length, n);               // 不再发事件（监听已释放）
+  const after = await session.request(AD_BREAKS.MATCH_END);
+  assert.equal(after.status, AD_STATUS.ERROR);
+  assert.equal(after.reason, 'destroyed');
+  assert.equal(session.close(), false);         // 幂等
 });
 
 test('原有用户暂停在广告期间与结束后都保持', async () => {

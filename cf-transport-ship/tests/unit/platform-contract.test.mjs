@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   AD_BREAKS, AD_STATUS, PLATFORM_EVENTS,
   normalizeLanguage, isAdBreak, createEmitter, validateAdapter,
+  createBreakPolicy, createLanguagePolicy,
 } from '../../src/platform/contract.js';
 import { OfflinePlatformAdapter } from '../../src/platform/offline.js';
 import { makeControls } from './helpers/ad-controls.js';
@@ -61,6 +62,34 @@ test('validateAdapter：离线适配器满足合同，空对象列出缺失项',
   assert.ok(bad.missing.includes('id') && bad.missing.includes('init'));
 });
 
+test('F7 validateAdapter：缺 off 的适配器不合合同（退订入口必须存在）', () => {
+  const bad = validateAdapter({
+    id: 'x', language: 'en', init() {}, requestAd() {}, on() {},
+  });
+  assert.equal(bad.ok, false);
+  assert.ok(bad.missing.includes('off'));
+});
+
+test('F1 断点策略：默认两点不变，其他游戏可注入自己的自然断点集', () => {
+  assert.equal(createBreakPolicy(null)(AD_BREAKS.MATCH_END), true);   // 默认策略
+  const custom = createBreakPolicy(['level-up', 'shop-open']);
+  assert.equal(custom('level-up'), true);
+  assert.equal(custom('shop-open'), true);
+  assert.equal(custom(AD_BREAKS.MATCH_END), false); // 默认两点在自定义策略下不再合法
+  const pred = createBreakPolicy((v) => v === 'wave-end');
+  assert.equal(pred('wave-end'), true);
+  assert.equal(pred('combat'), false);
+});
+
+test('F2 支持语言可配置：核心不锁死中英表，默认策略保持不变', () => {
+  const policy = createLanguagePolicy({ supported: ['fr', 'de'], fallback: 'fr' });
+  assert.deepEqual(policy.supported, ['fr', 'de']);
+  assert.equal(policy.normalize('de-DE'), 'de');
+  assert.equal(policy.normalize('zh-CN'), 'fr'); // 中英不在该游戏支持集内
+  assert.equal(normalizeLanguage('fr', 'fr', ['fr', 'de']), 'fr');
+  assert.equal(normalizeLanguage('zh-CN'), 'zh-cn'); // 默认策略不受影响
+});
+
 test('离线适配器：无 window 依赖、幂等初始化、默认中文', async () => {
   // 本测试运行于 Node（无 window/document），能构造即证明无浏览器依赖
   const a = new OfflinePlatformAdapter();
@@ -101,4 +130,39 @@ test('离线适配器接入 AdSession：无填充请求不触碰暂停与音频'
   assert.equal(ctrl.s.adPaused, false);
   assert.equal(ctrl.s.muted, false);
   assert.equal(session.state, 'idle');
+});
+
+test('F8 installPlatform：一行安装即插即用，destroy 收口、幂等并释放监听', async () => {
+  const { installPlatform } = await import('../../src/platform/index.js');
+  const ctrl = makeControls();
+  const lifecycle = [];
+  const handle = installPlatform({
+    controls: ctrl.api,
+    onEvent: (type) => lifecycle.push(type),
+  });
+  assert.equal(validateAdapter(handle.adapter).ok, true);
+  assert.equal(await handle.ready, true);
+
+  const seen = [];
+  const unsub = handle.on(PLATFORM_EVENTS.READY, (p) => seen.push(p));
+  assert.equal(typeof unsub, 'function'); // 统一退订入口
+
+  const result = await handle.session.request(AD_BREAKS.MATCH_END); // offline → no-fill
+  assert.equal(result.status, AD_STATUS.NO_FILL);
+  assert.equal(ctrl.simPaused, false);
+
+  assert.equal(handle.destroy(), true);
+  assert.equal(handle.destroyed, true);
+  assert.equal(handle.destroy(), false); // 幂等
+  const after = await handle.session.request(AD_BREAKS.MATCH_END);
+  assert.equal(after.status, AD_STATUS.ERROR); // 销毁后请求安全收口
+  assert.equal(after.reason, 'destroyed');
+});
+
+test('F8 installPlatform：注入不合合同的自定义适配器在安装期即报错', async () => {
+  const { installPlatform } = await import('../../src/platform/index.js');
+  assert.throws(
+    () => installPlatform({ adapter: { id: 'bad', init() {}, requestAd() {}, on() {} } }),
+    /missing/,
+  );
 });
