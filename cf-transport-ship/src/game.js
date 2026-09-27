@@ -2,7 +2,9 @@
 import * as THREE from 'three';
 import { Renderer } from './render.js';
 import { buildTextures } from './textures.js';
-import { MAP_BUILDERS, getMapDescriptor, resolveMapId, inSpawnZone } from './maps/index.js';
+// 纯解析函数来自 registry（无 three/资产依赖，node 可导入）；地图构建器含浏览器纹理资产，
+// 在唯一使用点惰性动态导入，避免静态链把 .png 拉进 node 模块图
+import { getMapDescriptor, resolveMapId, inSpawnZone } from './maps/registry.js';
 import { getMode } from './modes/index.js';
 import { BombSession } from './modes/bomb-session.js';
 import { PracticeRuntime } from './modes/practice-runtime.js';
@@ -88,6 +90,7 @@ export class Game {
     this.hud.loading(0.55, this.mapDesc.loadingLabel);
     await nextFrame();
     this.world = new World();
+    const { MAP_BUILDERS } = await import('./maps/index.js'); // 惰性加载：仅真正建图时才触及纹理资产
     this.map = (MAP_BUILDERS[mapId] || MAP_BUILDERS['transport-ship'])(this.renderer.scene, this.T, this.world);
     this.hud.loading(0.68, this.mapDesc.env?.ocean === false ? '天空与光照' : '天空与海洋');
     await nextFrame();
