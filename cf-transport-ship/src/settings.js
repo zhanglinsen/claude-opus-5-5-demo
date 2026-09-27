@@ -20,6 +20,7 @@ export const DEFAULT_OPTS = {
   fov: 78,
   vol: 0.8,
   mode: null, // null = 跟随地图默认模式（运输船 tdm、沙漠灰 bomb）；对局时 URL ?mode= 优先于已存设置
+  lang: '', // 界面语言；'' = 自动（按 玩家选择 > 平台语言 > 浏览器语言 > 构建默认 解析，见 src/i18n/）
 };
 
 // 模式合法取值（与 modes/index.js 的 MODES 键一致；菜单模式分段与持久化共用）
@@ -49,6 +50,8 @@ export function normalize(raw, touch = false) {
   for (const k of Object.keys(ENUMS)) if (ENUMS[k].includes(o[k])) out[k] = o[k];
   // 地图 id 的合法性由地图注册表解析兜底（未知 id 自动回退），这里只保证类型
   if (typeof o.map === 'string' || o.map === null) out.map = o.map;
+  // 语言标签自由文本（BCP47 风格，如 'zh-CN'）；合法性由 i18n 目录匹配兜底，这里只收字符串
+  out.lang = typeof o.lang === 'string' ? o.lang.trim().slice(0, 35) : DEFAULT_OPTS.lang;
   for (const k of Object.keys(RANGES)) {
     const v = o[k];
     if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.min(RANGES[k][1], Math.max(RANGES[k][0], v));

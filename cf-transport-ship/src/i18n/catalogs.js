@@ -1,0 +1,363 @@
+// 本游戏中英词典（Task 3 / US-02）。
+// 键为稳定 ID（点分域.键），后续任务按键改接调用点；值必须与现有界面文案一致（zh 为准）。
+// 不改动任何持久 ID（武器/地图/模式/阵营/军衔档位 ID 均保持原样，仅新增展示文案键）。
+// 键一致性由 validateCatalogs 保证（见 i18n.test.mjs）。
+
+export const CATALOGS = {
+  zh: {
+    // 通用
+    'common.ok': '确定',
+    'common.cancel': '取消',
+    'common.close': '关闭',
+    'common.loading': '加载中…',
+
+    // 菜单
+    'menu.logo': 'CROSSFIRE · 团队竞技',
+    'menu.start': '开 始 游 戏',
+    'menu.resume': '继 续',
+    'menu.pause': '暂停',
+    'menu.quit': '退出到主菜单',
+    'menu.again': '再 来 一 局',
+    'menu.toMenu': '主菜单',
+    'menu.map': '地图',
+    'menu.mode': '模式',
+    'menu.team': '阵营',
+    'menu.primary': '主武器',
+    'menu.teamSize': '对战规模',
+    'menu.goalKills': '目标击杀',
+    'menu.difficulty': '电脑难度',
+    'menu.timeOfDay': '时间',
+    'menu.quality': '画质',
+    'menu.sensitivity': '灵敏度',
+    'menu.mouseSensitivity': '鼠标灵敏度',
+    'menu.fov': '视野 FOV',
+    'menu.volume': '音量',
+    'menu.profile': '军衔档案',
+    'menu.lockNote': '点击开始后鼠标将被锁定，按 Esc 暂停。画质切换会重新加载页面。',
+    'menu.touchNote': '检测到触屏设备：已启用虚拟摇杆（左侧移动、右侧滑动视角）。电脑 + 鼠标体验最佳。',
+    'menu.loadoutTitle': '更换主武器',
+    'menu.loadoutOk': '确 定（B）',
+    'menu.locked': '待开放',
+
+    // 键位说明
+    'menu.key.move': '移动',
+    'menu.key.walk': '静步',
+    'menu.key.jump': '跳',
+    'menu.key.crouch': '蹲',
+    'menu.key.fire': '开火',
+    'menu.key.scope': '狙击开镜 / 刀重击',
+    'menu.key.slots': '主武器 / 手枪 / 刀 / 手雷',
+    'menu.key.quickSwap': '快切',
+    'menu.key.cycleSwitch': '切换',
+    'menu.key.c4': 'C4（携带时）',
+    'menu.key.spab': '拆包 / 拾取（拆包优先）',
+    'menu.key.dropC4': '丢弃 C4',
+    'menu.key.reload': '换弹',
+    'menu.key.inspect': '检视武器',
+    'menu.key.changePrimary': '更换主武器',
+    'menu.key.scoreboard': '计分板',
+    'menu.key.pauseSettings': '暂停 / 设置',
+
+    // 阵营
+    'team.bl.name': '潜伏者',
+    'team.gr.name': '保卫者',
+    'team.bl.sub': 'Black List',
+    'team.gr.sub': 'Global Risk',
+
+    // 难度 / 昼夜 / 画质
+    'diff.easy': '简单',
+    'diff.normal': '普通',
+    'diff.hard': '困难',
+    'diff.hell': '地狱',
+    'tod.day': '白天',
+    'tod.dusk': '黄昏',
+    'quality.low': '流畅',
+    'quality.medium': '均衡',
+    'quality.high': '极致',
+
+    // 地图
+    'map.transport-ship.name': '运输船',
+    'map.transport-ship.en': 'TRANSPORT SHIP',
+    'map.transport-ship.loading': '搭建运输船',
+    'map.transport-ship.blurb': '联合国维和行动在监视非法军火出口时，发现一艘从俄罗斯驶往尼日利亚的可疑货轮。保卫者（Global Risk）奉命登船突击检查，却遭到潜伏者（Black List）伏击。<br>船头船尾两个船舱出生，中路 V 形斜放集装箱、两侧 L 形箱堆，左右各有一条只能从己方出生点进入的集装箱管道，管道顶上就是可以架枪的二楼。',
+    'map.desert-grey.name': '沙漠灰',
+    'map.desert-grey.en': 'DESERT GREY',
+    'map.desert-grey.loading': '搭建沙漠灰',
+    'map.desert-grey.blurb': '经典的沙漠巷战地图：潜伏者（Black List）从南侧出生，保卫者（Global Risk）驻守北侧。中路直通 A 大与 A 平台，西侧 B 洞分上下两层经桥下、B 门与 B 窗迂回，A 大坑经南北坡道进出，木门木箱可穿透。',
+
+    // 模式
+    'mode.tdm.name': '团队竞技',
+    'mode.bomb.name': '爆破模式',
+    'mode.practice.name': '练习模式',
+
+    // HUD
+    'hud.goalTdm': '{mode} · 目标 {n}',
+    'hud.goalBomb': '{mode} · 先赢 {n} 局',
+    'hud.reload': '换弹中…',
+    'hud.ammoEmpty': '弹药耗尽',
+    'hud.reloadHint': '按 R 换弹',
+    'hud.protect': '出生保护 {sec}s（开火即解除）',
+    'hud.dead': '你阵亡了',
+    'hud.spectateTip': '点击鼠标切换观战队友 · 下一回合复活',
+    'hud.respawnIn': '{sec} 秒后复活 · 按 B 更换武器',
+    'hud.practiceTitle': '练习靶场',
+    'hud.practiceHits': '命中 {n}',
+    'hud.alive': '存活 {a} : {b}',
+    'hud.round': '第 {n} 回合',
+    'hud.rankMax': '{xp} XP · 满级',
+
+    // 战报（结算页）
+    'report.victory': '胜利',
+    'report.defeat': '失败',
+    'report.draw': '平局',
+    'report.kills': '击杀',
+    'report.deaths': '死亡',
+    'report.headshots': '爆头',
+    'report.myScore': '你的战绩：{k} 击杀 · {d} 死亡 · {hs} 爆头 · 命中率 {acc}%',
+    'report.rankUp': '军衔晋升！',
+
+    // 报点 / 击杀播报
+    'callout.kill': '击杀 {name}',
+    'callout.grenade': '手雷击杀',
+    'callout.wallbang': '穿墙击杀',
+    'callout.headshot': '爆头',
+    'callout.killedBy': '被 {name} 用 {weapon} 击杀',
+    'callout.killedByHead': '被 {name} 用 {weapon} 爆头击杀',
+
+    // 爆破模式
+    'bomb.planted': 'C4 已安放',
+    'bomb.plantedSite': 'C4 已安放 · {site} 点',
+    'bomb.dropped': 'C4 已掉落',
+    'bomb.carryMe': 'C4 · 我携带',
+    'bomb.carryAlly': 'C4 · {name} 携带',
+    'bomb.carryEnemy': 'C4 · 敌方携带',
+    'bomb.defuseHold': '按住 E 拆除 C4',
+    'bomb.defendC4': '守住 C4 直至引爆',
+    'bomb.gotoC4': '前往 C4 点拆除',
+    'bomb.pickup': '按 E 拾取 C4',
+    'bomb.recover': '找回 C4',
+    'bomb.blockPickup': '阻止对方拾取 C4',
+    'bomb.plantHold': '按住左键安放 C4',
+    'bomb.prepHint': '准备期 · 按 B 更换背包',
+    'bomb.planting': '正在安放',
+    'bomb.defusing': '正在拆除',
+    'bomb.roundBL': '潜伏者 拿下本回合',
+    'bomb.roundGR': '保卫者 拿下本回合',
+    'bomb.roundEnd': '回合结束',
+
+    // 武器（稳定键 = 现有武器 ID）
+    'weapon.ak47.name': 'AK-47',
+    'weapon.m4a1.name': 'M4A1',
+    'weapon.awm.name': 'AWM',
+    'weapon.mp5.name': 'MP5',
+    'weapon.deagle.name': '沙漠之鹰',
+    'weapon.knife.name': '军刀',
+    'weapon.he.name': '手雷',
+    'weapon.flash.name': '闪光弹',
+    'weapon.smoke.name': '烟雾弹',
+
+    // 军衔（稳定键，档位顺序不变）
+    'rank.private.name': '列兵',
+    'rank.corporal.name': '下士',
+    'rank.sergeant.name': '中士',
+    'rank.staffSergeant.name': '上士',
+    'rank.secondLieutenant.name': '少尉',
+    'rank.firstLieutenant.name': '中尉',
+    'rank.captain.name': '上尉',
+    'rank.major.name': '少校',
+    'rank.lieutenantColonel.name': '中校',
+    'rank.colonel.name': '上校',
+
+    // 装备
+    'equip.preset': '预设 {n}',
+
+    // 设置（暂停页与语言）
+    'settings.language': '语言',
+    'settings.languageAuto': '自动',
+    'settings.languageZh': '简体中文',
+    'settings.languageEn': 'English',
+
+    // 加载与错误
+    'load.tip': '小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。',
+    'error.storageUnavailable': '本地存档不可用，进度仅本次会话有效',
+    'error.loadFailed': '资源加载失败，请刷新重试',
+  },
+  en: {
+    // Common
+    'common.ok': 'OK',
+    'common.cancel': 'Cancel',
+    'common.close': 'Close',
+    'common.loading': 'LOADING',
+
+    // Menu
+    'menu.logo': 'CROSSFIRE · TEAM DEATHMATCH',
+    'menu.start': 'START GAME',
+    'menu.resume': 'RESUME',
+    'menu.pause': 'PAUSED',
+    'menu.quit': 'QUIT TO MENU',
+    'menu.again': 'PLAY AGAIN',
+    'menu.toMenu': 'MAIN MENU',
+    'menu.map': 'MAP',
+    'menu.mode': 'MODE',
+    'menu.team': 'TEAM',
+    'menu.primary': 'PRIMARY',
+    'menu.teamSize': 'TEAM SIZE',
+    'menu.goalKills': 'KILL TARGET',
+    'menu.difficulty': 'BOT DIFFICULTY',
+    'menu.timeOfDay': 'TIME',
+    'menu.quality': 'QUALITY',
+    'menu.sensitivity': 'SENSITIVITY',
+    'menu.mouseSensitivity': 'MOUSE SENSITIVITY',
+    'menu.fov': 'FIELD OF VIEW',
+    'menu.volume': 'VOLUME',
+    'menu.profile': 'RANK PROFILE',
+    'menu.lockNote': 'Click Start to lock the mouse; press Esc to pause. Changing quality reloads the page.',
+    'menu.touchNote': 'Touch device detected: virtual joysticks enabled (left side moves, right side aims). Best played on desktop with a mouse.',
+    'menu.loadoutTitle': 'CHANGE PRIMARY',
+    'menu.loadoutOk': 'OK (B)',
+    'menu.locked': 'LOCKED',
+
+    // Controls
+    'menu.key.move': 'Move',
+    'menu.key.walk': 'Walk',
+    'menu.key.jump': 'Jump',
+    'menu.key.crouch': 'Crouch',
+    'menu.key.fire': 'Fire',
+    'menu.key.scope': 'Scope in / Heavy knife',
+    'menu.key.slots': 'Primary / Pistol / Knife / Grenade',
+    'menu.key.quickSwap': 'Quick swap',
+    'menu.key.cycleSwitch': 'Cycle weapons',
+    'menu.key.c4': 'C4 (when carried)',
+    'menu.key.spab': 'Defuse / Pick up (defuse first)',
+    'menu.key.dropC4': 'Drop C4',
+    'menu.key.reload': 'Reload',
+    'menu.key.inspect': 'Inspect weapon',
+    'menu.key.changePrimary': 'Change primary',
+    'menu.key.scoreboard': 'Scoreboard',
+    'menu.key.pauseSettings': 'Pause / Settings',
+
+    // Factions
+    'team.bl.name': 'Black List',
+    'team.gr.name': 'Global Risk',
+    'team.bl.sub': 'Black List',
+    'team.gr.sub': 'Global Risk',
+
+    // Difficulty / time / quality
+    'diff.easy': 'Easy',
+    'diff.normal': 'Normal',
+    'diff.hard': 'Hard',
+    'diff.hell': 'Hell',
+    'tod.day': 'Day',
+    'tod.dusk': 'Dusk',
+    'quality.low': 'Low',
+    'quality.medium': 'Medium',
+    'quality.high': 'High',
+
+    // Maps
+    'map.transport-ship.name': 'Transport Ship',
+    'map.transport-ship.en': 'TRANSPORT SHIP',
+    'map.transport-ship.loading': 'Building Transport Ship',
+    'map.transport-ship.blurb': 'While monitoring illegal arms exports, a UN peacekeeping operation spotted a suspicious cargo ship sailing from Russia to Nigeria. Global Risk boarded it for an inspection — and walked into a Black List ambush.<br>Both teams spawn in the fore and aft cabins. V-shaped containers cut across the middle with L-shaped stacks on both sides; each side has a container duct only reachable from its own spawn, topped by a gunnable second floor.',
+    'map.desert-grey.name': 'Desert Grey',
+    'map.desert-grey.en': 'DESERT GREY',
+    'map.desert-grey.loading': 'Building Desert Grey',
+    'map.desert-grey.blurb': 'A classic desert street map: Black List spawns to the south while Global Risk holds the north. Mid runs straight to A Long and the A platform; on the west, the two-level B Tunnels loop under the bridge past B Door and B Window. The A Long pit is reached via north–south ramps, and wooden doors and crates can be shot through.',
+
+    // Modes
+    'mode.tdm.name': 'Team Deathmatch',
+    'mode.bomb.name': 'Bomb Defuse',
+    'mode.practice.name': 'Practice',
+
+    // HUD
+    'hud.goalTdm': '{mode} · Target {n}',
+    'hud.goalBomb': '{mode} · First to win {n}',
+    'hud.reload': 'RELOADING…',
+    'hud.ammoEmpty': 'OUT OF AMMO',
+    'hud.reloadHint': 'Press R to reload',
+    'hud.protect': 'Spawn shield {sec}s (ends when you fire)',
+    'hud.dead': 'YOU DIED',
+    'hud.spectateTip': 'Click to switch teammate · Respawn next round',
+    'hud.respawnIn': 'Respawn in {sec}s · Press B to change weapon',
+    'hud.practiceTitle': 'PRACTICE RANGE',
+    'hud.practiceHits': 'Hits {n}',
+    'hud.alive': 'Alive {a} : {b}',
+    'hud.round': 'Round {n}',
+    'hud.rankMax': '{xp} XP · MAX',
+
+    // Battle report
+    'report.victory': 'VICTORY',
+    'report.defeat': 'DEFEAT',
+    'report.draw': 'DRAW',
+    'report.kills': 'KILLS',
+    'report.deaths': 'DEATHS',
+    'report.headshots': 'HS',
+    'report.myScore': 'Your score: {k} kills · {d} deaths · {hs} headshots · {acc}% accuracy',
+    'report.rankUp': 'RANK UP!',
+
+    // Callouts / kill feed
+    'callout.kill': 'Killed {name}',
+    'callout.grenade': 'Grenade kill',
+    'callout.wallbang': 'Wallbang kill',
+    'callout.headshot': 'HEADSHOT',
+    'callout.killedBy': 'Killed by {name} with {weapon}',
+    'callout.killedByHead': 'Headshotted by {name} with {weapon}',
+
+    // Bomb mode
+    'bomb.planted': 'C4 PLANTED',
+    'bomb.plantedSite': 'C4 planted · Site {site}',
+    'bomb.dropped': 'C4 DROPPED',
+    'bomb.carryMe': 'C4 · You carry it',
+    'bomb.carryAlly': 'C4 · {name} carries it',
+    'bomb.carryEnemy': 'C4 · Enemy carries it',
+    'bomb.defuseHold': 'Hold E to defuse the C4',
+    'bomb.defendC4': 'Defend the C4 until it detonates',
+    'bomb.gotoC4': 'Reach the C4 and defuse it',
+    'bomb.pickup': 'Press E to pick up the C4',
+    'bomb.recover': 'Recover the C4',
+    'bomb.blockPickup': 'Stop them from taking the C4',
+    'bomb.plantHold': 'Hold fire to plant the C4',
+    'bomb.prepHint': 'Prep phase · Press B to change loadout',
+    'bomb.planting': 'PLANTING',
+    'bomb.defusing': 'DEFUSING',
+    'bomb.roundBL': 'Black List takes the round',
+    'bomb.roundGR': 'Global Risk takes the round',
+    'bomb.roundEnd': 'Round over',
+
+    // Weapons (stable keys = existing weapon IDs)
+    'weapon.ak47.name': 'AK-47',
+    'weapon.m4a1.name': 'M4A1',
+    'weapon.awm.name': 'AWM',
+    'weapon.mp5.name': 'MP5',
+    'weapon.deagle.name': 'Desert Eagle',
+    'weapon.knife.name': 'Knife',
+    'weapon.he.name': 'Grenade',
+    'weapon.flash.name': 'Flashbang',
+    'weapon.smoke.name': 'Smoke',
+
+    // Ranks (stable keys, tier order unchanged)
+    'rank.private.name': 'Private',
+    'rank.corporal.name': 'Corporal',
+    'rank.sergeant.name': 'Sergeant',
+    'rank.staffSergeant.name': 'Staff Sergeant',
+    'rank.secondLieutenant.name': 'Second Lieutenant',
+    'rank.firstLieutenant.name': 'First Lieutenant',
+    'rank.captain.name': 'Captain',
+    'rank.major.name': 'Major',
+    'rank.lieutenantColonel.name': 'Lieutenant Colonel',
+    'rank.colonel.name': 'Colonel',
+
+    // Equipment
+    'equip.preset': 'Preset {n}',
+
+    // Settings (pause screen and language)
+    'settings.language': 'LANGUAGE',
+    'settings.languageAuto': 'Auto',
+    'settings.languageZh': '简体中文',
+    'settings.languageEn': 'English',
+
+    // Loading and errors
+    'load.tip': 'Tip: a crouch jump (crouch then jump) goes higher, and standing on crates lets you climb onto the container second floor.',
+    'error.storageUnavailable': 'Local storage unavailable — progress lasts only this session',
+    'error.loadFailed': 'Failed to load resources — please refresh',
+  },
+};

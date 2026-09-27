@@ -178,3 +178,46 @@ test('saveOpts/loadOpts 往返一致', () => {
   saveOpts(s, o);
   assert.equal(loadOpts(s, false).map, 'desert-grey');
 });
+
+// ── 语言字段（US-02）：lang 存于 cf_opts_v2，'' = 自动 ──
+
+test('lang 字段：默认空串（自动），归一化保留合法字符串', () => {
+  assert.equal(DEFAULT_OPTS.lang, '');
+  const o = normalize({ v: 2, lang: 'en' });
+  assert.equal(o.lang, 'en');
+  const zh = normalize({ v: 2, lang: 'zh-CN' });
+  assert.equal(zh.lang, 'zh-CN');
+});
+
+test('lang 字段：非法类型回退空串，两侧空白与超长输入被清理', () => {
+  assert.equal(normalize({ v: 2, lang: 42 }).lang, '');
+  assert.equal(normalize({ v: 2, lang: null }).lang, '');
+  assert.equal(normalize({ v: 2, lang: {} }).lang, '');
+  assert.equal(normalize({ v: 2, lang: ' en ' }).lang, 'en');
+  assert.equal(normalize({ v: 2, lang: 'x'.repeat(99) }).lang.length, 35);
+  assert.equal(normalize({ v: 2, lang: '   ' }).lang, '');
+});
+
+test('lang 字段：旧 v2 记录（无 lang）与 v1 迁移记录都补出 lang=""', () => {
+  const v2 = loadOpts(fakeStorage({ [SETTINGS_KEY]: JSON.stringify({ v: 2, primary: 'awm', map: 'transport-ship' }) }), false);
+  assert.equal(v2.lang, '');
+  assert.equal(v2.primary, 'awm'); // 其余字段不受影响
+  const v1 = migrate(JSON.stringify({ sens: 1.7 }));
+  assert.equal(v1.lang, '');
+});
+
+test('lang 字段：损坏/抛错 storage 下同样得到 lang=""，可继续游戏', () => {
+  assert.equal(loadOpts(fakeStorage({ [SETTINGS_KEY]: '{oops' }), false).lang, '');
+  const s = throwingStorage();
+  const o = loadOpts(s, false);
+  assert.equal(o.lang, '');
+  assert.doesNotThrow(() => saveOpts(s, { ...o, lang: 'en' }));
+});
+
+test('lang 字段：save/load 往返保留玩家语言选择', () => {
+  const s = fakeStorage();
+  const o = loadOpts(s, false);
+  o.lang = 'en';
+  saveOpts(s, o);
+  assert.equal(loadOpts(s, false).lang, 'en');
+});
