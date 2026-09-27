@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-04`。Story IDs: US-04。Accepted
 2026-09-27：与运输船原创版文件完全分离。
 
 ## Completion
-待执行；记录布局图、路线和实机截图。
+已完成。原创平台沙漠图入库，来源修复提交 `38f7f68`；18/18 测试与独立 Flash Max 复核 PASS；中英实机截图及短程实走见最终报告。

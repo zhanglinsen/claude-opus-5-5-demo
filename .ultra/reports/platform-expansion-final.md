@@ -4,6 +4,8 @@
 - 实施基线 SHA：`00f94f8`（Y8 locale：空 SDK locale 回退浏览器语言）
 - 本轮验收执行：GLM-5.3-Flash High，独立 worktree `platform-integration`
 - 验收日期：2026-09-28
+- 独立终审：`.ultra/reports/platform-expansion-independent-review.md`，GLM-5.3-Flash Max `PASS-WITH-CONDITIONS`；文字条件已修订。
+- 本地预览：离线 `http://127.0.0.1:8787/`，Y8 mock `http://127.0.0.1:8787/y8/index.html`，GameMonetize mock `http://127.0.0.1:8787/gamemonetize/index.html`；三地址均实测 HTTP 200。服务器由 `cd cf-transport-ship && npm run serve` 启动，离线 `dist/index.html` 亦可直接打开。
 - 前置核对：HEAD `00f94f8` ✓；worktree Git 干净 ✓；主仓库 `.ultra/dispatch/platform-night/integration-y8-empty-locale-review.jsonl` 新上下文 Flash Max 审核结论 **PASS**（所审 SHA 即 `00f94f8`）✓；范围文件 `task-12.md`、`specs/platform-expansion.md` ✓
 
 ## 1. 通过/失败矩阵

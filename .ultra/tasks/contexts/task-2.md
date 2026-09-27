@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-01`。Story IDs: US-01。Accepted
 2026-09-27：三张附件已抢先保存，组件待门槛满足后实施。
 
 ## Completion
-待执行；记录测试和视觉截图。
+已完成。品牌插件与三张原图入库，来源提交 `2468553`；独立 GLM-5.3 旗舰 MAX 审核 PASS，最终双语菜单截图见 `cf-transport-ship/artifacts/platform-expansion/screenshots/`。

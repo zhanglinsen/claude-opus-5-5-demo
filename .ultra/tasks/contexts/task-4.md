@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-03`。Story IDs: US-03。Accepted
 2026-09-27：将音频临时静音与持久音量分离。
 
 ## Completion
-待执行；记录合同和边界测试。
+已完成。可复用 PlatformAdapter/AdSession/离线适配器入库，来源修复提交 `216908f`；34/34 测试与独立 Flash Max 复核 PASS。

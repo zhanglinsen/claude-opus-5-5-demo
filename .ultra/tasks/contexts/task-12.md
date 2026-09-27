@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-06`。Story IDs: US-05, US-06。A
 2026-09-27：保留必要测试，旧证据沿用。
 
 ## Completion
-待执行；记录报告、ZIP、截图和可复现命令。
+已完成（附条件）。验收脚本与报告提交 `8a6ec5c`、`6c5859e`，独立 Flash Max 终审 PASS-WITH-CONDITIONS；最终证据见 `.ultra/reports/platform-expansion-final.md` 与 `.ultra/reports/platform-expansion-independent-review.md`。正式 ID/平台包代码数据剔除在公开提交前处理。

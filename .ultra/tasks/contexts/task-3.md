@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-02`。Story IDs: US-02。Accepted
 2026-09-27：依据既有 v2 设置模块分配文件所有权。
 
 ## Completion
-待执行；记录红绿重构和兼容证据。
+已完成。可复用 LocaleService、目录及设置兼容入库，来源提交 `2468553`；45/45 聚焦测试、独立旗舰 MAX 审核 PASS。

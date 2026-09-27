@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-02`。Story IDs: US-02。Accepted
 2026-09-27：game.js 写入与最终集成顺序互斥。
 
 ## Completion
-待执行；记录旧存档回归证据。
+已完成。战斗消息/档案本地化入库，来源提交 `53d664a`、`ccfb1d5`；38/38 受影响测试及独立 Flash Max 定向复核 PASS。

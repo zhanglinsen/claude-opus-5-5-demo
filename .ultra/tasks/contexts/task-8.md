@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-03`。Story IDs: US-03。Accepted
 2026-09-27：官方文档 https://github.com/GameMonetize/GameMonetize.com-SDK。
 
 ## Completion
-待执行；记录 SDK 模拟结果。
+已完成。GameMonetize 适配器入库，来源提交 `4f68db8`；16/16 mock 测试与独立 Flash Max 审核 PASS。正式 ID 缺失，真实平台验证仍待执行。

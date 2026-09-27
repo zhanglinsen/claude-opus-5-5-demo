@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-02`。Story IDs: US-01, US-02。A
 2026-09-27：HUD/style 文件只由本任务写入。
 
 ## Completion
-待执行；记录两语言截图。
+已完成。菜单/HUD 本地化及触屏修复入库，来源提交 `f14006c`、`89bee5d`；独立 Flash Max 定向复核 PASS，双语截图见最终报告。

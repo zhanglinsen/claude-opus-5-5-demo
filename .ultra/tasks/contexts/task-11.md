@@ -20,4 +20,4 @@ Source: `.ultra/specs/platform-expansion.md#US-05`。Story IDs: US-03, US-04, US
 2026-09-27：单一集成任务负责共享文件。
 
 ## Completion
-待执行；记录构建命令与产物路径。
+已完成。三目标集成产品基线 `00f94f8` 经独立 Flash Max 复核 PASS；三构建与 ZIP 位于 `cf-transport-ship/dist/`。正式平台包仍为 mock。
