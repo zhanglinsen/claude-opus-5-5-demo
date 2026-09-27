@@ -22,7 +22,9 @@
  * controls 抛错被逐个隔离（F3）：暂停/静音仍成对施加与清除，Promise 绝不挂起。
  *
  * 回调接线（F5）：requestAd(breakpoint, callbacks) 的第二参是请求作用域句柄
- *   { epoch, started(), ended(), failed(reason), noFill() }，请求收口或新请求开始后失效；
+ *   { epoch, started(), ended(), failed(reason), noFill() }，新请求开始后失效；
+ *   握手超时收口（Promise 已结算）不使句柄失效——迟到窗口内的真实开始/结束仍
+ *   作用于同一请求（F4：真实播放必暂停静音，结束/看门狗/销毁必恢复）；
  *   兼容公开 API session.adStarted() 等继续可用（作用于当前活动请求）。
  *
  * 看门狗（F6，默认开启）：handshakeMs（默认 8000）覆盖 SDK 接手后从不回调 beforeAd 的行为；
@@ -179,14 +181,15 @@ export class AdSession {
   }
 
   _started(entry) {
-    if (!entry || entry !== this._pending || entry.done) return false; // 旧请求句柄失效（F5）
+    if (!entry || entry !== this._pending) return false; // 旧请求句柄失效（F5）
     if (this._state === STATE.PLAYING) return false;                    // 重复开始
     if (this._state === STATE.REQUESTED || this._state === STATE.HANDSHAKE) {
       return this._beginPlayback();
     }
     if (this._state === STATE.IDLE) {
-      // F4：握手超时收口后的迟到真实开始。有看门狗时仅限迟到窗口内；
-      // 看门狗关闭时永远接受——宁误暂停，不漏暂停。
+      // F4：握手超时已按无播放结算的请求（entry.done）迟到真实开始，仍必暂停静音。
+      // 有看门狗时仅限迟到窗口内；看门狗关闭时永远接受——宁误暂停，不漏暂停。
+      // 其余 IDLE（正常收口后，_lateStartUntil 为 null）照旧拒绝。
       const dl = this._lateStartUntil;
       if (this._watchdogOn ? (dl !== null && Date.now() <= dl) : true) {
         return this._beginPlayback();
@@ -196,19 +199,22 @@ export class AdSession {
   }
 
   _ended(entry) {
-    if (!entry || entry !== this._pending || entry.done) return false;
-    if (this._state !== STATE.PLAYING) return false; // 无开始不得误恢复；重复结束忽略
+    if (!entry || entry !== this._pending) return false; // 旧请求句柄失效（F5）
+    // 无开始不得误恢复；重复结束忽略。迟到播放（Promise 已结算）同样在此恢复。
+    if (this._state !== STATE.PLAYING) return false;
     this._clearTimer();
     this._state = STATE.IDLE;
     this._restore();
     const was = this._wasUserPaused;
     this._emit(PLATFORM_EVENTS.AD_COMPLETE, { wasUserPaused: was });
+    // 已结算的 Promise 不得二次结算：_resolvePending 对 done 条目是空操作。
     this._resolvePending({ status: AD_STATUS.PLAYED, wasUserPaused: was, started: true });
     return true;
   }
 
   _failed(reason, entry) {
-    if (!entry || entry !== this._pending || entry.done) return false; // 结束后/旧请求的迟到失败
+    if (!entry || entry !== this._pending) return false; // 旧请求句柄失效（F5）
+    // 结束后/旧收口的迟到失败由下方状态检查拒绝；迟到播放失败仍须先恢复。
     if (this._state === STATE.PLAYING) {
       this._clearTimer();
       this._state = STATE.IDLE;
@@ -265,7 +271,8 @@ export class AdSession {
   }
 
   _concludePlayingWatchdog() {
-    if (this._state !== STATE.PLAYING || !this._pending || this._pending.done) return;
+    // 迟到播放（Promise 已结算）也必须兜底恢复；_resolvePending 对 done 条目空操作。
+    if (this._state !== STATE.PLAYING || !this._pending) return;
     this._state = STATE.IDLE;
     this._restore();
     const was = this._wasUserPaused;

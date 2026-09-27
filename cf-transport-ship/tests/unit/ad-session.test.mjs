@@ -315,3 +315,111 @@ test('无平台能力：requestAd 缺失按不可用收口', async () => {
   assert.equal(result.status, AD_STATUS.UNAVAILABLE);
   assert.equal(ctrl.simPaused, false);
 });
+
+test('F4 迟到播放（窗口内）：握手超时结算后真实开始仍必暂停静音，结束恢复且不二次结算', async () => {
+  const ctrl = makeControls();
+  const events = [];
+  const session = new AdSession({
+    requestAd: async () => AD_STATUS.OK,
+    controls: ctrl.api,
+    onEvent: (type) => events.push(type),
+    watchdog: { handshakeMs: 10, playingMs: 300 },
+  });
+  const settled = await session.request(AD_BREAKS.MATCH_END); // 握手超时收口
+  assert.equal(settled.status, AD_STATUS.PLAYED);
+  assert.equal(settled.started, false);
+  assert.equal(session.state, 'idle');
+
+  assert.equal(session.adStarted(), true); // 迟到的 Y8 beforeAd 仍被接受
+  assert.equal(session.state, 'playing');
+  assert.equal(ctrl.simPaused, true);      // 真实播放必暂停
+  assert.equal(ctrl.s.muted, true);        // 真实播放必静音
+
+  assert.equal(session.adEnded(), true);   // 迟到的结束信号必须撤销暂停静音
+  assert.equal(session.state, 'idle');
+  assert.equal(ctrl.simPaused, false);
+  assert.equal(ctrl.s.muted, false);
+
+  assert.equal(await settled, settled);    // 同一 Promise 已结算，不被二次结算
+  assert.equal(settled.started, false);    // 结算结果不被迟到播放改写
+  assert.equal(events.filter((e) => e === PLATFORM_EVENTS.AD_COMPLETE).length, 2);
+});
+
+test('F4/F6 迟到播放看门狗：Promise 已结算时播放超时仍兜底恢复，游戏不挂起', async () => {
+  const ctrl = makeControls();
+  const session = new AdSession({
+    requestAd: async () => AD_STATUS.OK,
+    controls: ctrl.api,
+    watchdog: { handshakeMs: 10, playingMs: 30 },
+  });
+  const settled = await session.request(AD_BREAKS.MATCH_END);
+  assert.equal(settled.started, false);
+  assert.equal(session.adStarted(), true); // 迟到播放进行中
+  assert.equal(ctrl.simPaused, true);
+  await new Promise((r) => setTimeout(r, 60)); // 播放看门狗到点（SDK 永不回调结束）
+  assert.equal(session.state, 'idle');
+  assert.equal(ctrl.simPaused, false);     // 已结算的 Promise 也必须撤销暂停
+  assert.equal(ctrl.s.muted, false);
+});
+
+test('F4 迟到播放（窗口外）：超过迟到窗口的真实开始被忽略，不触碰游戏', async () => {
+  const ctrl = makeControls();
+  const events = [];
+  const session = new AdSession({
+    requestAd: async () => AD_STATUS.OK,
+    controls: ctrl.api,
+    onEvent: (type) => events.push(type),
+    watchdog: { handshakeMs: 10, playingMs: 20 },
+  });
+  const result = await session.request(AD_BREAKS.MATCH_END);
+  assert.equal(result.started, false);
+  await new Promise((r) => setTimeout(r, 60)); // 越过迟到窗口
+  assert.equal(session.adStarted(), false);
+  assert.equal(session.state, 'idle');
+  assert.equal(ctrl.simPaused, false);
+  assert.equal(ctrl.s.muted, false);
+  assert.ok(!events.includes(PLATFORM_EVENTS.AD_START));
+});
+
+test('F5 迟到窗口不复活旧 epoch 句柄：旧句柄 start/end/failed/noFill 均失效', async () => {
+  const ctrl = makeControls();
+  const captured = [];
+  let calls = 0;
+  const session = new AdSession({
+    requestAd: (_bp, cb) => {
+      captured.push(cb);
+      return ++calls === 1 ? Promise.resolve(AD_STATUS.OK) : new Promise(() => {}); // 新请求挂起
+    },
+    controls: ctrl.api,
+    watchdog: { handshakeMs: 10, playingMs: 300 },
+  });
+  const first = await session.request(AD_BREAKS.MATCH_END); // 握手超时收口，进入迟到窗口
+  assert.equal(first.started, false);
+  const second = session.request(AD_BREAKS.MENU_RETURN); // 新 epoch 开始
+  assert.equal(session.state, 'requested');
+  assert.equal(captured[0].started(), false); // 旧句柄不得借迟到窗口进入播放
+  assert.equal(captured[0].ended(), false);
+  assert.equal(captured[0].failed('stale'), false);
+  assert.equal(captured[0].noFill(), false);
+  assert.equal(ctrl.simPaused, false);
+  assert.equal(ctrl.s.muted, false);
+  assert.equal(first.started, false); // 首个结算结果不变
+  void second; // 新请求保持挂起即可，无需收口
+});
+
+test('F8 迟到播放中销毁：暂停与静音必须被撤销', async () => {
+  const ctrl = makeControls();
+  const session = new AdSession({
+    requestAd: async () => AD_STATUS.OK,
+    controls: ctrl.api,
+    watchdog: { handshakeMs: 10, playingMs: 300 },
+  });
+  const result = await session.request(AD_BREAKS.MATCH_END);
+  assert.equal(result.started, false);
+  assert.equal(session.adStarted(), true); // 迟到播放进行中
+  assert.equal(ctrl.simPaused, true);
+  assert.equal(session.destroy(), true);
+  assert.equal(ctrl.simPaused, false);     // 销毁先恢复，游戏不挂起
+  assert.equal(ctrl.s.muted, false);
+  assert.equal(session.state, 'closed');
+});
