@@ -4,6 +4,12 @@
 
 先运行 `bash .ultra/dispatch/start-workbuddy-visual-final-gate.sh`。它创建 `.ultra/reports/workbuddy-visual-in-progress.md` 互斥标记，避免 Codex 自动化同时启动 GLM 写入。不要调用旧的 `start-workbuddy-visual.sh`，它会因已有 `final-visual-handoff.md` 和 `BLOCKED.md` 拒绝启动。保持可恢复快照和已有提交，不重置或清理工作树。现有 `.workbuddy/` 属先前 Workbuddy 会话，勿覆盖。
 
+## 模型与初始档位
+
+- **Workbuddy 初始模型选 `GLM-5.3-Flash`；若可选推理档位，选 High。**它负责协调、V/P 两路初步排查、明确的小修及针对性自测。今晚 23:00 前先核对实时额度；额度为零时不要反复请求模型。
+- **`GLM-5.3 MAX` 指旗舰模型 `glm-5.3` 加 `--effort max`，不是 Flash 的另一个档位。**只在两路证据收束后，用全新只读 CLI 上下文做独立视觉与性能方法审核。若旗舰实时额度不可用，明确记录未执行，不得把 Flash 的自审标为 MAX 独立审核。必要时用一次 GPT-6 Sol high 的只读聚焦终验替代。
+- Sol high 是最后一道聚焦复核，Flash 不得自己宣布已完成独立终验；Astra low 不承担本任务的视觉/性能终验。不要把两个 MAX 会话或多个 Sol 会话作为默认配置。
+
 ## 事实与目标
 
 - `.ultra/reports/final-visual-handoff.md` 已完成并提交，但 `.ultra/reports/BLOCKED.md` 记录了未闭合的性能与独立视觉审核门槛。先读两份报告、`.ultra/reports/workbuddy-visual-handoff.md`、`.ultra/reports/performance-contention-2026-09-27.md`。
