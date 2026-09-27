@@ -10,6 +10,34 @@ import {
   SOLIDS, REGIONS, NAV_GRAPH, NAV_PAIRS, SPAWNS, PRACTICE_TARGETS, ROUTES,
   PLATFORM_HARBOR_DESCRIPTOR as DESC, META,
 } from '../../src/maps/platform-harbor/layout.js';
+import { buildPlatformHarbor } from '../../src/maps/platform-harbor/build.js';
+
+// build.js 只把纹理对象透传进材质参数，node 下用空对象桩即可（不做 GPU 验证）
+const TEX = {
+  deck: { map: {}, normalMap: {}, roughnessMap: {} },
+  bulkhead: { map: {}, normalMap: {} },
+  darkSteel: { map: {}, normalMap: {} },
+  yellowSteel: { map: {}, normalMap: {} },
+  hull: { map: {}, normalMap: {} },
+  crates: Array.from({ length: 4 }, () => ({ map: {}, normalMap: {} })),
+  containers: Array.from({ length: 4 }, () => ({ side20: {}, n20: {}, side40: {}, n40: {}, door: {}, doorN: {}, roof: {}, roofN: {} })),
+};
+
+function buildMap() {
+  return buildPlatformHarbor({ add() {}, remove() {} }, TEX, new World());
+}
+
+// 与 game.js regionAt 相同的首匹配解析（顺序敏感）
+function regionNameAt(regions, x, y, z) {
+  for (const r of regions) {
+    const e = r.extents || r.bounds || r;
+    if (e.x0 === undefined || e.x1 === undefined || e.z0 === undefined || e.z1 === undefined) continue;
+    if (x < e.x0 || x > e.x1 || z < e.z0 || z > e.z1) continue;
+    if (e.y0 !== undefined && (y < e.y0 - 0.6 || y > (e.y1 ?? e.y0) + 2.6)) continue;
+    return r.name || r.id;
+  }
+  return null;
+}
 
 const region = (id) => REGIONS.find((r) => r.id === id);
 const node = (id) => NAV_GRAPH.nodes.find((n) => n.id === id);
@@ -243,4 +271,28 @@ test('描述符字段完整，可与 maps/registry.js 直接对接', () => {
     assert.ok(h.length === 3 && Number.isFinite(h[2]), 'ai.holds 需要 [x, z, 朝向偏置] 三元组');
   }
   assert.ok(DESC.ai.roam.x0 === -DESC.ai.roam.x1 && DESC.ai.roam.z0 === -DESC.ai.roam.z1, 'ai.roam 未按对称地图约定关于原点对称');
+});
+
+// ================= 构建输出与报点首匹配（H1/H2 行为契约） =================
+
+test('构建结果携带 regions：17 个报点区域随 build 输出暴露（game.js 只读 map.regions）', () => {
+  const res = buildMap();
+  assert.ok(Array.isArray(res.regions), 'build 返回缺少 regions（H1：game.js regionAt 将整体失效）');
+  assert.equal(res.regions.length, 17, '应包含全部 17 个报点区域（9 定义 + 8 镜像）');
+  assert.deepEqual(res.regions.map((r) => r.id).sort(), REGIONS.map((r) => r.id).sort(), 'build.regions 与 layout 导出不一致');
+  for (const r of res.regions) {
+    assert.ok(r.id && r.name && r.en && r.extents, `区域 ${r.id} 缺少 id/name/en/extents`);
+  }
+  res.dispose();
+});
+
+test('报点按首匹配顺序解析：箱顶报箱顶、地面报箱区（roofS 必须先于无 y 过滤的 yardS）', () => {
+  const res = buildMap();
+  // 南箱顶步道（ctB1/ctB2 顶 y=2.59）与北箱顶镜像
+  assert.equal(regionNameAt(res.regions, 2.6, 2.59, 16), '南箱顶', '南箱顶在 y=2.59 被前置区域吞掉（H2）');
+  assert.equal(regionNameAt(res.regions, -2.6, 2.59, -16), '北箱顶', '北箱顶在 y=2.59 被前置区域吞掉（H2）');
+  // 同 XZ 的地面（y=0）不得命中 y 过滤的箱顶区，应落到箱区
+  assert.equal(regionNameAt(res.regions, 1.5, 0, 14), '南箱区', '地面点应报南箱区');
+  assert.equal(regionNameAt(res.regions, -1.5, 0, -14), '北箱区', '地面点应报北箱区');
+  res.dispose();
 });

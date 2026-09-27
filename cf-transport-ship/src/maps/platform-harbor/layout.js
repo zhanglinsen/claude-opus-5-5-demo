@@ -142,9 +142,11 @@ const regionDefs = [
   { id: 'blSpawn', name: '潜伏者出生区', en: 'BL Spawn', ext: { x0: -24, z0: 26, x1: 24, z1: 34 }, twin: 'grSpawn', twinName: '保卫者出生区', twinEn: 'GR Spawn' },
   { id: 'quaySW', name: '西南岸巷', en: 'SW Quay Lane', ext: { x0: -28.1, z0: 1, x1: -25.2, z1: 26 }, twin: 'quayNE', twinName: '东北岸巷', twinEn: 'NE Quay Lane' },
   { id: 'shedS', name: '南货运棚', en: 'South Shed', ext: { x0: -25.2, z0: 8, x1: -6.8, z1: 24 }, twin: 'shedN', twinName: '北货运棚', twinEn: 'North Shed' },
+  // roofS 必须排在 yardS 之前：game.js regionAt 按数组顺序取首个 XZ/Y 匹配，
+  // yardS 无 y 过滤，若在前会吞掉箱顶高度（y≈2.59）的报点
+  { id: 'roofS', name: '南箱顶', en: 'South Rooftop', ext: { x0: -3.5, z0: 14.7, x1: 21, z1: 17.3, y0: 2.5, y1: 2.7 }, twin: 'roofN', twinName: '北箱顶', twinEn: 'North Rooftop' },
   { id: 'yardS', name: '南箱区', en: 'South Yard', ext: { x0: -4.6, z0: 9.2, x1: 21, z1: 17.3 }, twin: 'yardN', twinName: '北箱区', twinEn: 'North Yard' },
   { id: 'craneSE', name: '东南吊道', en: 'SE Crane Run', ext: { x0: 21, z0: 6, x1: 28.1, z1: 34 }, twin: 'craneNW', twinName: '西北吊道', twinEn: 'NW Crane Run' },
-  { id: 'roofS', name: '南箱顶', en: 'South Rooftop', ext: { x0: -3.5, z0: 14.7, x1: 21, z1: 17.3, y0: 2.5, y1: 2.7 }, twin: 'roofN', twinName: '北箱顶', twinEn: 'North Rooftop' },
   { id: 'midS', name: '中场南', en: 'Mid South', ext: { x0: -28, z0: 3.6, x1: 28, z1: 9.2 }, twin: 'midN', twinName: '中场北', twinEn: 'Mid North' },
   { id: 'midW', name: '中场西', en: 'Mid West', ext: { x0: -20, z0: -6.5, x1: -7, z1: 6.5 }, twin: 'midE', twinName: '中场东', twinEn: 'Mid East' },
   { id: 'dock', name: '中央站台', en: 'Loading Dock', ext: { x0: -6.5, z0: -3.5, x1: 6.5, z1: 3.5, y0: 1.1, y1: 1.3 }, twin: 'dock' },

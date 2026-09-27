@@ -2,7 +2,7 @@
 // 本文件只负责材质实例化、合批网格与纯装饰（龙门吊梁/桅灯/护舷/驳船/水面/标线）。
 // 不引用 SIGN_UV 运输船标识图集；纹理全部复用共享纹理集 T，不新增纹理。
 import * as THREE from 'three';
-import { LEVELS, SOLIDS, LAMPS, SPAWNS, NAV_GRAPH, META } from './layout.js';
+import { LEVELS, SOLIDS, LAMPS, SPAWNS, NAV_GRAPH, REGIONS, META } from './layout.js';
 
 const FACE = {
   px: { n: [1, 0, 0], u: [0, 0, -1], v: [0, 1, 0] },
@@ -255,6 +255,7 @@ export function buildPlatformHarbor(scene, T, world, opts = {}) {
     meshes,
     materials: matDefs,
     navGraph: NAV_GRAPH,
+    regions: REGIONS,
     meta: META,
     update(dt, t) { for (const f of anim) f(dt, t); },
     dispose() {
