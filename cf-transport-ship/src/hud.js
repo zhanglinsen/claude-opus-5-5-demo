@@ -2,11 +2,32 @@
 import { WEAPONS, PRIMARIES } from './weapons.js';
 import { loadOpts, saveOpts, acquireStorage } from './settings.js';
 import { MAPS } from './maps/registry.js';
-import { getMode, modeOptionsFor } from './modes/index.js';
+import { MODES, getMode, modeOptionsFor } from './modes/index.js';
 import { BOMB_DEFAULTS } from './modes/bomb.js';
+import { CATALOGS, createGameLocale } from './i18n/index.js';
 
-const TEAM_CN = { BL: '潜伏者', GR: '保卫者' };
 const $ = (s, r = document) => r.querySelector(s);
+
+// ---------- 本地化基础（Task 9 / US-02） ----------
+// 纯函数片（objectiveHud / matchHeader / awardLine）的缺省翻译：直接取中文目录，
+// 与历史输出逐字一致；传入 t（LocaleService.t 形状）即切换语言，不另存第二套硬编码字符串。
+const interp = (text, params) => (params ? text.replace(/\{(\w+)\}/g, (m, n) => (params[n] != null ? String(params[n]) : m)) : text);
+const zhT = (k, params) => interp(CATALOGS.zh && CATALOGS.zh[k] !== undefined ? CATALOGS.zh[k] : k, params);
+
+// 军衔稳定键（与 profile/rank.js 档位顺序一一对应；adapter 只提供中文 rankName）
+const RANK_TIER_KEYS = ['private', 'corporal', 'sergeant', 'staffSergeant', 'secondLieutenant', 'firstLieutenant', 'captain', 'major', 'lieutenantColonel', 'colonel'];
+const rankKeyByName = (name) => RANK_TIER_KEYS.find((k) => CATALOGS.zh[`rank.${k}.name`] === name) || null;
+const rankKeyByLevel = (level) => {
+  const i = (level | 0) - 1;
+  return i >= 0 && i < RANK_TIER_KEYS.length ? RANK_TIER_KEYS[i] : null;
+};
+const rankLabel = (r, t) => {
+  const key = rankKeyByName(r && r.rankName) || rankKeyByLevel(r && r.level);
+  return key ? t(`rank.${key}.name`) : (r && r.rankName) || '';
+};
+
+// game.js 传入的 s.modeName 取自 MODES[id].name（中文），反查稳定键以便翻译
+const modeKeyByName = (name) => Object.keys(MODES).find((id) => MODES[id].name === name) || null;
 
 const HS_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><g fill="none" stroke="#ff4030" stroke-width="3"><circle cx="20" cy="20" r="11"/><path d="M20 2v10M20 28v10M2 20h10M28 20h10"/></g><circle cx="20" cy="20" r="3.5" fill="#ff4030"/></svg>`);
 const WB_ICON = 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect x="15" y="4" width="10" height="32" fill="#bbb"/><path d="M2 20h36" stroke="#ffd24a" stroke-width="3"/></svg>`);
@@ -16,11 +37,13 @@ const CROSSHAIR_B = `<g fill="none" stroke="#fff" stroke-width="4"><circle cx="5
 
 // 爆破 HUD 只读渲染：把 Game.objectiveView 提供的 s.objective 映射为可见文案/进度。
 // 不计算任何规则结果——回合胜负、时间、C4 状态全部取自视图字段。
+// ctx.t 可选（LocaleService.t 形状）：缺省走中文目录，HUD 传入当前语言 t 即时切换。
 export function objectiveHud(view, ctx = {}) {
+  const t = ctx.t || zhT;
   const off = { active: false, round: '', aliveBL: '', aliveGR: '', c4: '', c4Cls: '', hint: '', progress: null };
   if (!view || !view.phase || view.phase === 'idle' || view.phase === 'matchEnd') return off;
   const out = { ...off, active: true };
-  out.round = view.round ? `第 ${view.round} 回合` : '';
+  out.round = view.round ? t('hud.round', { n: view.round }) : '';
   out.aliveBL = String(view.alive?.BL ?? '');
   out.aliveGR = String(view.alive?.GR ?? '');
   const bomb = view.bomb || null;
@@ -28,56 +51,59 @@ export function objectiveHud(view, ctx = {}) {
   const defuseHold = view.defuseHold || BOMB_DEFAULTS.defuseHold;
   if (view.phase === 'roundEnd') {
     out.c4 = '';
-    out.hint = view.roundWinner === 'BL' ? '潜伏者 拿下本回合' : view.roundWinner === 'GR' ? '保卫者 拿下本回合' : '回合结束';
+    out.hint = view.roundWinner === 'BL' ? t('bomb.roundBL') : view.roundWinner === 'GR' ? t('bomb.roundGR') : t('bomb.roundEnd');
     return out;
   }
   if (view.phase === 'planted') {
-    out.c4 = `C4 已安放${bomb?.site ? ' · ' + bomb.site + ' 点' : ''}`;
+    out.c4 = bomb?.site ? t('bomb.plantedSite', { site: bomb.site }) : t('bomb.planted');
     out.c4Cls = 'planted';
-    if (view.defusable) out.hint = '按住 E 拆除 C4';
-    else if (ctx.myTeam === 'BL') out.hint = '守住 C4 直至引爆';
-    else out.hint = '前往 C4 点拆除';
-    if (view.defuseProgress > 0) out.progress = { label: '正在拆除', frac: Math.min(1, view.defuseProgress / defuseHold) };
+    if (view.defusable) out.hint = t('bomb.defuseHold');
+    else if (ctx.myTeam === 'BL') out.hint = t('bomb.defendC4');
+    else out.hint = t('bomb.gotoC4');
+    if (view.defuseProgress > 0) out.progress = { label: t('bomb.defusing'), frac: Math.min(1, view.defuseProgress / defuseHold) };
     return out;
   }
   if (bomb && bomb.planted) { // 视图相位与C4状态不一致时按安放渲染（防御）
-    out.c4 = `C4 已安放${bomb.site ? ' · ' + bomb.site + ' 点' : ''}`;
+    out.c4 = bomb.site ? t('bomb.plantedSite', { site: bomb.site }) : t('bomb.planted');
     out.c4Cls = 'planted';
     return out;
   }
   if (bomb && bomb.dropped) {
-    out.c4 = 'C4 已掉落';
+    out.c4 = t('bomb.dropped');
     out.c4Cls = 'dropped';
-    if (view.pickupable) out.hint = '按 E 拾取 C4';
-    else if (ctx.myTeam === 'BL') out.hint = '找回 C4';
-    else out.hint = '阻止对方拾取 C4';
+    if (view.pickupable) out.hint = t('bomb.pickup');
+    else if (ctx.myTeam === 'BL') out.hint = t('bomb.recover');
+    else out.hint = t('bomb.blockPickup');
     return out;
   }
   if (bomb && bomb.carrierId != null) {
-    if (bomb.carrierId === ctx.myId) { out.c4 = 'C4 · 我携带'; out.c4Cls = 'carry'; }
+    if (bomb.carrierId === ctx.myId) { out.c4 = t('bomb.carryMe'); out.c4Cls = 'carry'; }
     else {
       const a = ctx.actorOf ? ctx.actorOf(bomb.carrierId) : null;
-      if (a && ctx.myTeam && a.team === ctx.myTeam) { out.c4 = `C4 · ${a.name} 携带`; out.c4Cls = 'carry'; }
-      else { out.c4 = 'C4 · 敌方携带'; out.c4Cls = 'enemy'; }
+      if (a && ctx.myTeam && a.team === ctx.myTeam) { out.c4 = t('bomb.carryAlly', { name: a.name }); out.c4Cls = 'carry'; }
+      else { out.c4 = t('bomb.carryEnemy'); out.c4Cls = 'enemy'; }
     }
-    if (view.plantable) out.hint = '按住左键安放 C4';
-    if (view.plantProgress > 0) out.progress = { label: '正在安放', frac: Math.min(1, view.plantProgress / plantHold) };
+    if (view.plantable) out.hint = t('bomb.plantHold');
+    if (view.plantProgress > 0) out.progress = { label: t('bomb.planting'), frac: Math.min(1, view.plantProgress / plantHold) };
   }
-  if (view.phase === 'prep' && !out.hint) out.hint = '准备期 · 按 B 更换背包';
+  if (view.phase === 'prep' && !out.hint) out.hint = t('bomb.prepHint');
   return out;
 }
 
 // 主计时条只消费当前模式的公开视图；爆破的 Infinity 对局时限不能当作回合时钟。
-export function matchHeader(s) {
+// t 可选：模式名经稳定键反查翻译（s.modeName 来自 MODES 中文名）。
+export function matchHeader(s, t = zhT) {
   const bomb = s.objective;
   const remaining = bomb ? bomb.timeLeft : s.timeLeft;
   const tl = Math.max(0, Number.isFinite(remaining) ? remaining : 0);
   const mm = Math.floor(tl / 60), ss = Math.floor(tl % 60);
+  const modeKey = modeKeyByName(s.modeName || '');
+  const mode = modeKey ? t(`mode.${modeKey}.name`) : (s.modeName || '');
   return {
     clock: `${mm}:${ss < 10 ? '0' : ''}${ss}`,
     goal: bomb
-      ? `${s.modeName || '爆破模式'} · 先赢 ${bomb.winsNeeded ?? BOMB_DEFAULTS.winsNeeded} 局`
-      : `${s.modeName || '团队竞技'} · 目标 ${s.goal}`,
+      ? t('hud.goalBomb', { mode, n: bomb.winsNeeded ?? BOMB_DEFAULTS.winsNeeded })
+      : t('hud.goalTdm', { mode, n: s.goal }),
   };
 }
 
@@ -116,12 +142,13 @@ export function displayMode(qs, opts, mapDesc) {
 }
 
 // 结算页军衔行：awarded:false（去重重放/练习）静默；rank 缺失时仍给 XP（防御）
-export function awardLine(award) {
+// t 可选：军衔名按中文档位名反查稳定键翻译（未知档位名回落原样，不外泄键名）
+export function awardLine(award, t = zhT) {
   if (!award || !award.awarded) return '';
   const xp = `+${award.xp ?? 0} XP`;
   const r = award.rank;
   if (!r) return xp;
-  return `${award.rankUp ? '军衔晋升！' : ''}${xp} · ${r.rankName || ''}${r.level ? ` · Lv.${r.level}` : ''}`;
+  return `${award.rankUp ? t('report.rankUp') : ''}${xp} · ${rankLabel(r, t)}${r.level ? ` · Lv.${r.level}` : ''}`;
 }
 
 // 投掷物背包行：[{id, name, count, current}]；剩余 0 的型号不再显示，current 供 4 号轮换高亮
@@ -139,7 +166,9 @@ export function nadeSummary(bag, used, currentId) {
 }
 
 export class HUD {
-  constructor(game) {
+  // deps.locale 可选（LocaleService）：由最终集成传入 Game 级语言服务；
+  // 缺省自建（读 cf_opts_v2 的 lang 字段，自动按浏览器语言解析），旧调用 new HUD(game) 行为不变。
+  constructor(game, deps = {}) {
     this.g = game;
     this.root = $('#ui');
     this.root.innerHTML = TEMPLATE;
@@ -156,34 +185,135 @@ export class HUD {
     this._prChips = '';
     this._nadeHtml = null; // P3-1：投掷物背包条仅变化时重写
     this._endAward = null; // P3-2：结算军衔行仅变化时重写
+    this._lastEnd = null;  // 语言切换时重绘结算页所需快照
+    this._lastBoard = null;
     this.radarCtx = this.el.radar.getContext('2d');
     const touch = matchMedia('(pointer:coarse)').matches;
     this.opts = loadOpts(acquireStorage(), touch);
+    this.initLocale(deps.locale);
     this.buildMenu();
+    this.applyLocale(); // 按当前语言填充静态文案（模板内置 zh 初值，切语言即时重绘）
+    this.initBrand();
   }
   saveOpts() { saveOpts(acquireStorage(), this.opts); }
 
+  // ---------- 语言服务（Task 9） ----------
+  initLocale(injected) {
+    this.locale = injected || createGameLocale();
+    this._ownsLocale = !injected; // 自建实例由本 HUD 销毁；注入实例归宿主管
+    this.t = (k, p) => this.locale.t(k, p);
+    // 缺键回落语义由 LocaleService 负责；这里只记录诊断输出
+    this._unsubLocale = this.locale.subscribe(() => this.applyLocale());
+  }
+  // 键缺失时的安全取值：t() 缺键回退键名本身，展示层用 fallback 挡住键名外泄
+  tf(key, fallback) { const v = this.locale.t(key); return v === key ? fallback : v; }
+  // 武器/地图/模式的稳定展示名：目录缺键回落注册表原名
+  wName(id, fallback) { return this.tf(`weapon.${id}.name`, fallback != null ? fallback : (WEAPONS[id] || {}).name || id); }
+  mapName(desc) { return this.tf(`map.${desc.id}.name`, desc.name); }
+  modeName(id, fallback) { return this.tf(`mode.${id}.name`, fallback != null ? fallback : getMode(id).name); }
+  destroy() {
+    if (this._unsubLocale) { this._unsubLocale(); this._unsubLocale = null; }
+    if (this._ownsLocale && this.locale && this.locale.destroy) this.locale.destroy();
+  }
+  // 语言切换 → 全量重绘可见文案。静态节点走 data-i18n 原地改文本（监听器不重绑），
+  // 动态分段（地图/模式/预设）整体重建（先清空，旧节点随重建移除，监听器绑在新节点上）。
+  applyLocale() {
+    document.documentElement.lang = this.locale.getLocale();
+    this.applyStaticText();
+    this.buildMapSeg();
+    if (this.mapDesc) this.setMapInfo(this.mapDesc);
+    if (this._profileBound) this.renderProfile();
+    this.syncControls();
+    this.syncLangSegs();
+    this.updateBrand();
+    if (this._lastEnd && !this.el.end.classList.contains('hidden')) this.renderEnd(this._lastEnd);
+    if (this._lastBoard && !this.el.board.classList.contains('hidden')) {
+      const b = this._lastBoard;
+      this.scoreboard(true, b.actors, b.myId, b.score);
+    }
+  }
+  applyStaticText() {
+    for (const el of this.root.querySelectorAll('[data-i18n]')) el.textContent = this.t(el.dataset.i18n);
+    for (const el of this.root.querySelectorAll('[data-i18n-title]')) {
+      el.title = this.t(el.dataset.i18nTitle);
+      el.setAttribute('aria-label', el.title);
+    }
+  }
+  // 语言分段高亮跟随 LocaleService 实际生效值（auto 反映解析结果）
+  syncLangSegs() {
+    const v = this.locale.isAuto() ? 'auto' : this.locale.getLocale();
+    for (const seg of this.root.querySelectorAll('.langSeg'))
+      for (const b of seg.querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === v);
+  }
+  bindLangSegs() {
+    for (const seg of this.root.querySelectorAll('.langSeg')) {
+      for (const b of seg.querySelectorAll('button')) {
+        b.addEventListener('click', () => {
+          const v = b.dataset.v === 'auto' ? '' : b.dataset.v;
+          if (this.locale.setLocale(v)) {
+            // 与 LocaleService 的持久化保持一致，避免后续 saveOpts 用旧 opts.lang 覆盖
+            this.opts.lang = v === '' ? '' : this.locale.getLocale();
+            this.saveOpts();
+          }
+          this.g.audio?.playUI('click');
+        });
+      }
+    }
+  }
+
+  // ---------- 品牌（US-01）：按当前语言/背景选已保存原图，只换 src 不改原图 ----------
+  initBrand() {
+    // 动态加载：品牌资源经 esbuild dataurl 内联；加载失败不阻塞 HUD
+    import('./brand/index.js').then(({ createBrandMark }) => {
+      this.brand = createBrandMark({ getLocale: () => this.locale.getLocale() });
+      this.updateBrand();
+    }).catch(() => {});
+  }
+  updateBrand() {
+    const img = this.el.brandMark;
+    if (!img || !this.brand) return;
+    const mark = this.brand.getMark('dark');
+    if (!mark) { img.classList.add('hidden'); return; }
+    img.src = mark.src; img.alt = mark.alt;
+    img.classList.remove('hidden');
+  }
+
   // ---------- 菜单 ----------
+  // 地图分段整体重建（语言切换即重建）：按钮监听在重建时绑在新节点上，旧节点随 innerHTML 清空移除；
+  // 通用设置写入 + 切图回落默认模式两条路径合并到同一个 click（原先分两处绑定）
   buildMapSeg() {
     const seg = $('#mapSeg');
+    seg.innerHTML = '';
+    const o = this.opts;
     for (const id of Object.keys(MAPS)) {
       const m = MAPS[id];
       const b = document.createElement('button');
       b.dataset.v = id;
-      b.innerHTML = `${m.name}<small>${m.available ? m.en : '待开放'}</small>`;
+      b.innerHTML = `${esc(this.mapName(m))}<small>${m.available ? esc(m.en) : esc(this.t('menu.locked'))}</small>`;
       if (!m.available) b.disabled = true;
+      b.addEventListener('click', () => {
+        for (const x of seg.querySelectorAll('button')) x.classList.remove('on');
+        b.classList.add('on');
+        o.map = id;
+        o.mode = (m && m.defaultMode) || null; // 切图时模式回落该图默认；对局时 URL ?mode= 仍优先于已存设置
+        this.saveOpts();
+        this.g.onOption?.('map', id);
+        this.g.audio?.playUI('click');
+      });
       seg.appendChild(b);
     }
   }
-  // 菜单/加载页文案与小地图参数随地图切换
+  // 菜单/加载页文案与小地图参数随地图切换（名称/简介经稳定键翻译，语言切换时整条重跑）
   setMapInfo(desc) {
     this.mapDesc = desc;
-    document.title = `${desc.name} · 穿越火线 3D`;
-    this.el.mapTitle.textContent = desc.name;
+    const name = this.mapName(desc);
+    document.title = `${name} · ${this.t('menu.docTitle')}`;
+    this.el.mapTitle.textContent = name;
     this.el.mapEn.textContent = desc.en;
-    this.el.mapBlurb.innerHTML = desc.menu ? desc.menu.blurb : '';
-    this.el.loadTitle.textContent = desc.name.split('').join(' ');
-    this.el.boardTitle.textContent = `${desc.name} · ${getMode(desc.defaultMode).name}`;
+    this.el.mapBlurb.innerHTML = desc.menu ? this.tf(`map.${desc.id}.blurb`, desc.menu.blurb) : '';
+    this.el.loadTitle.textContent = this.locale.getLocale() === 'zh' ? name.split('').join(' ') : name;
+    this.el.boardTitle.textContent = `${name} · ${this.modeName(desc.defaultMode)}`;
+    if (this.el.radarLbl) this.el.radarLbl.textContent = name;
     this.buildModeSeg();
   }
   // 菜单模式分段：按地图 supportedModes 顺序渲染（modeOptionsFor），高亮当前生效模式；
@@ -196,7 +326,7 @@ export class HUD {
     for (const m of modeOptionsFor(this.mapDesc)) {
       const b = document.createElement('button');
       b.dataset.v = m.id;
-      b.textContent = m.name;
+      b.textContent = this.modeName(m.id, m.name);
       if (m.id === cur) b.classList.add('on');
       b.addEventListener('click', () => {
         for (const x of seg.querySelectorAll('button')) x.classList.remove('on');
@@ -212,7 +342,8 @@ export class HUD {
   buildMenu() {
     const o = this.opts;
     this.buildMapSeg();
-    const segs = this.root.querySelectorAll('.seg[data-k]');
+    // 通用分段（mapSeg 已在 buildMapSeg 内自带绑定；modeSeg 按图重建时自绑；langSeg 走 LocaleService）
+    const segs = this.root.querySelectorAll('.seg[data-k]:not(#mapSeg)');
     for (const s of segs) {
       const k = s.dataset.k;
       for (const b of s.querySelectorAll('button')) {
@@ -228,14 +359,7 @@ export class HUD {
         });
       }
     }
-    // 切图时模式回落该图默认（运输船 tdm、沙漠灰 bomb）；对局时 URL ?mode= 仍优先于已存设置
-    for (const b of $('#mapSeg').querySelectorAll('button')) {
-      b.addEventListener('click', () => {
-        const d = MAPS[b.dataset.v];
-        o.mode = (d && d.defaultMode) || null;
-        this.saveOpts();
-      });
-    }
+    this.bindLangSegs();
     // 练习面板换枪按钮：主武器走现有换包路径（onSwitch 同步练习运行时），其余按槽位真实切枪
     for (const b of this.root.querySelectorAll('#prGuns button')) {
       b.addEventListener('click', () => this.practiceSwitch(+b.dataset.slot, b.dataset.w));
@@ -308,9 +432,9 @@ export class HUD {
     const a = this.g.profileAdapter;
     if (!a) return;
     const r = a.rankView();
-    this.el.rankName.textContent = r.rankName;
+    this.el.rankName.textContent = rankLabel(r, this.t);
     this.el.rankLevel.textContent = `Lv.${r.level}`;
-    this.el.rankXp.textContent = r.nextThreshold != null ? `${r.xp} / ${r.nextThreshold} XP` : `${r.xp} XP · 满级`;
+    this.el.rankXp.textContent = r.nextThreshold != null ? `${r.xp} / ${r.nextThreshold} XP` : this.t('hud.rankMax', { xp: r.xp });
     this.el.rankFill.style.width = `${Math.round(Math.min(1, Math.max(0, r.progress)) * 100)}%`;
     // 存档通道降级（隐私模式/配额错误）：如实提示会话内有效，不宣称「已保存」
     this.el.profileNote.classList.toggle('hidden', a.persistence() !== 'memory');
@@ -319,7 +443,8 @@ export class HUD {
     seg.innerHTML = '';
     ps.list.forEach((p, i) => {
       const b = document.createElement('button');
-      b.innerHTML = `预设 ${i + 1}<small>${esc((WEAPONS[p.primary] || {}).name || p.primary)} · ${esc((WEAPONS[p.grenade] || {}).name || p.grenade)}</small>`;
+      const w1 = this.wName(p.primary), w2 = this.wName(p.grenade);
+      b.innerHTML = `${esc(this.t('equip.preset', { n: i + 1 }))}<small>${esc(w1)} · ${esc(w2)}</small>`;
       if (i === ps.active) b.classList.add('on');
       b.addEventListener('click', () => {
         a.switchPreset(i); // adapter 事件 → onProfileChanged → 重渲染高亮
@@ -328,14 +453,20 @@ export class HUD {
       seg.appendChild(b);
     });
   }
-  loading(p, text) { this.el.loadBar.style.width = (p * 100).toFixed(0) + '%'; if (text) this.el.loadTxt.textContent = text; }
+  loading(p, text) {
+    this.el.loadBar.style.width = (p * 100).toFixed(0) + '%';
+    if (!text) return;
+    // game.js 传入注册表的 loadingLabel（中文）时按稳定键翻译；其余阶段文案接线在 game.js，原样显示
+    if (this.mapDesc && text === this.mapDesc.loadingLabel) text = this.tf(`map.${this.mapDesc.id}.loading`, text);
+    this.el.loadTxt.textContent = text;
+  }
 
   // ---------- 局内 ----------
   update(dt, s) {
-    const e = this.el;
+    const e = this.el, t = this.t;
     // 比分与时间
     e.sBL.textContent = s.score.BL; e.sGR.textContent = s.score.GR;
-    const header = matchHeader(s);
+    const header = matchHeader(s, t);
     e.sTime.textContent = header.clock;
     e.sGoal.textContent = header.goal;
     e.tBL.classList.toggle('mine', s.myTeam === 'BL'); e.tGR.classList.toggle('mine', s.myTeam === 'GR');
@@ -353,7 +484,9 @@ export class HUD {
       else { e.aMag.textContent = w.mag; e.aRes.textContent = '/ ' + w.reserve; }
       e.aMag.classList.toggle('low', d.mag > 1 && w.mag <= Math.ceil(d.mag * 0.2));
       if (this.icons[d.id] && e.wIcon.dataset.id !== d.id) { e.wIcon.src = this.icons[d.id]; e.wIcon.dataset.id = d.id; }
-      e.aHint.textContent = w.reloading ? '换弹中…' : (d.mag > 1 && w.mag === 0 && w.reserve === 0 ? '弹药耗尽' : (d.mag > 1 && w.mag === 0 ? '按 R 换弹' : ''));
+      e.aHint.textContent = w.reloading ? t('hud.reload')
+        : (d.mag > 1 && w.mag === 0 && w.reserve === 0 ? t('hud.ammoEmpty')
+          : (d.mag > 1 && w.mag === 0 ? t('hud.reloadHint') : ''));
     }
     // 准星
     const showX = s.alive && !s.scoped && w && w.def.type !== 'sniper';
@@ -381,7 +514,7 @@ export class HUD {
     // 提示
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) e.toast.style.opacity = 0; }
     // 中央信息（阵亡/观战）由 updateObjective 统一处理
-    e.protect.textContent = s.protect > 0 && s.alive ? `出生保护 ${s.protect.toFixed(1)}s（开火即解除）` : '';
+    e.protect.textContent = s.protect > 0 && s.alive ? t('hud.protect', { sec: s.protect.toFixed(1) }) : '';
     e.nameTip.textContent = s.aimName || ''; e.nameTip.className = s.aimTeam || '';
     if (this.slotsT > 0) { this.slotsT -= dt; e.slots.style.opacity = Math.min(1, this.slotsT * 2); } else e.slots.style.opacity = 0;
     // 闪光白屏（s.blind，仅玩家存活时非 null；pointer-events:none 不拦截任何输入）
@@ -393,7 +526,7 @@ export class HUD {
     // 练习面板（非练习模式 s.practice = null → 隐藏）
     this.updatePractice(s);
     // 结算军衔行（s.award 仅 ended 后非 null；awarded:false 静默）——P3-2：仅变化时重写
-    const award = s.award ? awardLine(s.award) : '';
+    const award = s.award ? awardLine(s.award, t) : '';
     if (award !== this._endAward) {
       e.endAward.innerHTML = award;
       e.endAward.classList.toggle('hidden', !award);
@@ -406,7 +539,7 @@ export class HUD {
     const rows = p ? nadeSummary(p.grenadeBag, p.usedGrenades, p.inv[3] && p.inv[3].def.id) : [];
     const hidden = e.classList.contains('hidden');
     if (!rows.length) { if (!hidden) e.classList.add('hidden'); return; }
-    const html = rows.map((r) => `<span class="${r.current ? 'on' : ''}">${esc(r.name)}<b>×${r.count}</b></span>`).join('');
+    const html = rows.map((r) => `<span class="${r.current ? 'on' : ''}">${esc(this.wName(r.id, r.name))}<b>×${r.count}</b></span>`).join('');
     if (hidden || html !== this._nadeHtml) { // P3-1：与练习 chips 同纪律，仅变化时重写 DOM
       e.classList.remove('hidden');
       e.innerHTML = html;
@@ -417,11 +550,11 @@ export class HUD {
     const e = this.el, pr = s.practice;
     if (!pr) { e.practice.classList.add('hidden'); return; }
     e.practice.classList.remove('hidden');
-    e.prHits.textContent = `命中 ${pr.totalHits}`;
+    e.prHits.textContent = this.t('hud.practiceHits', { n: pr.totalHits });
     // P3-6 空态防御：开局 PracticeRuntime.current 可能为 null（game 侧种子化由接线会话处理），
     // 这里显示空武器名、无按钮高亮即可，不抛错
     const w = WEAPONS[pr.weapon && pr.weapon.current];
-    e.prWeapon.textContent = w ? w.name : '';
+    e.prWeapon.textContent = w ? this.wName(pr.weapon.current, w.name) : '';
     // 靶位：受击 flash>0 高亮 + 每靶命中数（DOM 写仅在变化时发生）
     const chips = (pr.targets || []).map((t) => `<i class="${t.flash > 0 ? 'on' : ''}">${esc(t.id)} ${t.hits}</i>`).join('');
     if (chips !== this._prChips) { e.prTargets.innerHTML = chips; this._prChips = chips; }
@@ -440,14 +573,14 @@ export class HUD {
   }
   // 爆破目标 HUD：只读渲染 s.objective（Game.objectiveView 提供的同一视图），不计算任何规则结果
   updateObjective(dt, s) {
-    const e = this.el, p = this.g.player;
+    const e = this.el, p = this.g.player, t = this.t;
     const oh = objectiveHud(s.objective, {
-      myId: p && p.id, myTeam: s.myTeam,
+      myId: p && p.id, myTeam: s.myTeam, t,
       actorOf: (id) => this.g.actors.find((a) => a.id === id) || null,
     });
     e.objInfo.classList.toggle('hidden', !oh.active);
     e.objRound.textContent = oh.round;
-    e.objAlive.textContent = oh.active ? `存活 ${oh.aliveBL} : ${oh.aliveGR}` : '';
+    e.objAlive.textContent = oh.active ? t('hud.alive', { a: oh.aliveBL, b: oh.aliveGR }) : '';
     e.c4State.textContent = oh.c4;
     e.c4State.className = oh.c4 ? oh.c4Cls : 'hidden';
     e.objHint.classList.toggle('hidden', !oh.hint);
@@ -463,7 +596,7 @@ export class HUD {
     e.slotC4.classList.toggle('on', carrying && !!(p && p.c4Selected));
     // C4 在手时弹药区显示 C4
     if (p && p.c4Selected && oh.active && s.alive) {
-      e.wName.textContent = 'C4 爆破物';
+      e.wName.textContent = t('hud.c4Item');
       e.aMag.textContent = '—'; e.aMag.classList.remove('low');
       e.aRes.textContent = '';
       e.aHint.textContent = oh.hint || '';
@@ -472,12 +605,12 @@ export class HUD {
     // 死亡观战（爆破模式）
     if (!s.alive && oh.active) {
       e.center.classList.remove('hidden');
-      e.cBig.textContent = p && p.spectateName ? `观战中 · ${p.spectateName}` : '观战中';
-      e.cSmall.textContent = '点击鼠标切换观战队友 · 下一回合复活';
+      e.cBig.textContent = p && p.spectateName ? t('hud.spectatingName', { name: p.spectateName }) : t('hud.spectating');
+      e.cSmall.textContent = t('hud.spectateTip');
     } else if (!s.alive && s.respawnIn > 0) {
       e.center.classList.remove('hidden');
-      e.cBig.innerHTML = s.killedBy || '你阵亡了';
-      e.cSmall.textContent = `${s.respawnIn.toFixed(1)} 秒后复活 · 按 B 更换武器`;
+      e.cBig.innerHTML = s.killedBy || t('hud.dead');
+      e.cSmall.textContent = t('hud.respawnIn', { sec: s.respawnIn.toFixed(1) });
     } else e.center.classList.add('hidden');
     // 触屏目标交互按钮仅爆破模式显示
     const showObj = oh.active && s.alive;
@@ -486,12 +619,12 @@ export class HUD {
   slots(inv, cur) {
     const e = this.el.slots;
     e.innerHTML = '';
-    ['主武器', '副武器', '近身', '投掷'].forEach((lab, i) => {
+    [this.t('hud.slotPrimary'), this.t('hud.slotPistol'), this.t('hud.slotMelee'), this.t('hud.slotThrow')].forEach((lab, i) => {
       const w = inv[i];
       if (!w) return;
       const d = document.createElement('div');
       d.className = 's' + (i === cur ? ' on' : '');
-      d.innerHTML = `<span>${w.def.name}</span><img src="${this.icons[w.id] || ''}"><b>${i + 1}</b>`;
+      d.innerHTML = `<span>${esc(this.wName(w.def.id, w.def.name))}</span><img src="${this.icons[w.id] || ''}"><b>${i + 1}</b>`;
       e.appendChild(d);
     });
     this.slotsT = 2.2;
@@ -525,26 +658,33 @@ export class HUD {
   toast(text, dur = 2.5) { const t = this.el.toast; t.innerHTML = text; t.style.opacity = 1; this.toastT = dur; }
   scoreboard(show, actors, myId, score) {
     this.el.board.classList.toggle('hidden', !show);
+    this._lastBoard = show ? { actors, myId, score } : null; // 语言切换时重绘
     if (!show) return;
+    const t = this.t;
     const rows = (team) => actors.filter((a) => a.team === team).sort((a, b) => b.stats.k - a.stats.k || a.stats.d - b.stats.d)
       .map((a) => `<tr class="${a.id === myId ? 'me' : ''} ${a.alive ? '' : 'dead'}"><td>${esc(a.name)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td></tr>`).join('');
-    const tbl = (team) => `<table class="t${team}"><tr><th class="team">${TEAM_CN[team]} · ${score[team]}</th><th>击杀</th><th>死亡</th><th>爆头</th></tr>${rows(team)}</table>`;
+    const tbl = (team) => `<table class="t${team}"><tr><th class="team">${esc(t(`team.${team.toLowerCase()}.name`))} · ${score[team]}</th><th>${esc(t('report.kills'))}</th><th>${esc(t('report.deaths'))}</th><th>${esc(t('report.headshots'))}</th></tr>${rows(team)}</table>`;
     this.el.boardBody.innerHTML = `<div class="cols">${tbl('BL')}${tbl('GR')}</div>`;
   }
   endScreen(win, score, actors, myId) {
     this.show('end');
+    this._lastEnd = { win, score, actors, myId }; // 语言切换时重绘
+    this.renderEnd(this._lastEnd);
+  }
+  renderEnd({ win, score, actors, myId }) {
+    const t = this.t;
     const r = this.el.endRes;
-    r.textContent = win === null ? '平局' : win ? '胜利' : '失败';
+    r.textContent = win === null ? t('report.draw') : win ? t('report.victory') : t('report.defeat');
     r.className = 'res ' + (win ? 'win' : 'lose');
-    this.el.endSc.textContent = `潜伏者 ${score.BL} : ${score.GR} 保卫者`;
+    this.el.endSc.textContent = `${t('team.bl.name')} ${score.BL} : ${score.GR} ${t('team.gr.name')}`;
     const mvp = [...actors].sort((a, b) => (b.stats.k * 2 - b.stats.d + b.stats.hs) - (a.stats.k * 2 - a.stats.d + a.stats.hs))[0];
-    this.el.endMvp.textContent = mvp ? `MVP：${mvp.name}（${mvp.stats.k} 杀 / ${mvp.stats.hs} 爆头）` : '';
+    this.el.endMvp.textContent = mvp ? t('report.mvp', { name: mvp.name, k: mvp.stats.k, hs: mvp.stats.hs }) : '';
     const me = actors.find((a) => a.id === myId);
     const acc = me && me.stats.shots ? ((me.stats.hits / me.stats.shots) * 100).toFixed(1) : '0';
-    this.el.endMe.textContent = me ? `你的战绩：${me.stats.k} 击杀 · ${me.stats.d} 死亡 · ${me.stats.hs} 爆头 · 命中率 ${acc}%` : '';
+    this.el.endMe.textContent = me ? t('report.myScore', { k: me.stats.k, d: me.stats.d, hs: me.stats.hs, acc }) : '';
     const rows = (team) => actors.filter((a) => a.team === team).sort((a, b) => b.stats.k - a.stats.k)
       .map((a) => `<tr class="${a.id === myId ? 'me' : ''}"><td>${esc(a.name)}</td><td>${a.stats.k}</td><td>${a.stats.d}</td><td>${a.stats.hs}</td></tr>`).join('');
-    const tbl = (team) => `<table class="t${team}"><tr><th class="team">${TEAM_CN[team]}</th><th>击杀</th><th>死亡</th><th>爆头</th></tr>${rows(team)}</table>`;
+    const tbl = (team) => `<table class="t${team}"><tr><th class="team">${esc(t(`team.${team.toLowerCase()}.name`))}</th><th>${esc(t('report.kills'))}</th><th>${esc(t('report.deaths'))}</th><th>${esc(t('report.headshots'))}</th></tr>${rows(team)}</table>`;
     this.el.endTable.innerHTML = `<div class="cols">${tbl('BL')}${tbl('GR')}</div>`;
   }
   // ---------- 小地图 ----------
@@ -621,30 +761,29 @@ export class HUD {
 
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-const PRIM_CARDS = PRIMARIES.map((id) => {
-  const d = WEAPONS[id];
-  const sub = { ak47: '潜伏者经典 · 伤害高', m4a1: '保卫者经典 · 稳定', awm: '一枪致命 · 需开镜', mp5: '射速快 · 移动灵活' }[id];
-  return `<div class="card" data-w="${id}"><img alt=""><b>${d.name}</b><small>${sub}</small></div>`;
-}).join('');
+// 换包卡片：名称/副标题挂稳定键，语言切换由 applyStaticText 原地改写（监听器绑在 .card 上，不重绑）
+const PRIM_CARDS = PRIMARIES.map((id) => (
+  `<div class="card" data-w="${id}"><img alt=""><b data-i18n="weapon.${id}.name">${esc((WEAPONS[id] || {}).name || id)}</b><small data-i18n="menu.card.${id}"></small></div>`
+)).join('');
 
-// 练习面板换枪按钮组（仅目录内：主武器 + 副武器 + 军刀 + 投掷物槽）
+// 练习面板换枪按钮组（仅目录内：主武器 + 副武器 + 军刀 + 投掷物槽）；文案挂稳定键
 const PR_GUN_BTNS = [
   ...PRIMARIES.map((id) => ({ slot: 0, id })),
   { slot: 1, id: 'deagle' },
   { slot: 2, id: 'knife' },
   { slot: 3, id: null },
-].map((g) => `<button data-slot="${g.slot}"${g.id ? ` data-w="${g.id}"` : ''}>${(WEAPONS[g.id] || {}).name || '投掷物'}</button>`).join('');
+].map((g) => `<button data-slot="${g.slot}"${g.id ? ` data-w="${g.id}"` : ''} data-i18n="${g.id ? `weapon.${g.id}.name` : 'hud.prGrenades'}">${esc((WEAPONS[g.id] || {}).name || '投掷物')}</button>`).join('');
 
 const TEMPLATE = `
 <div id="hud" class="hidden">
   <div id="blind" class="hidden"></div>
   <div id="score">
-    <div class="team bl" id="tBL"><span class="nm">潜伏者</span><span class="pts" id="sBL">0</span></div>
+    <div class="team bl" id="tBL"><span class="nm" data-i18n="team.bl.name">潜伏者</span><span class="pts" id="sBL">0</span></div>
     <div class="mid"><div class="time" id="sTime">10:00</div><div class="goal" id="sGoal"></div></div>
-    <div class="team gr" id="tGR"><span class="pts" id="sGR">0</span><span class="nm">保卫者</span></div>
+    <div class="team gr" id="tGR"><span class="pts" id="sGR">0</span><span class="nm" data-i18n="team.gr.name">保卫者</span></div>
   </div>
-  <div id="radarWrap"><canvas id="radar"></canvas><div class="lbl">运输船</div></div>
-  <div id="clinks"><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer" title="GitHub 源码" aria-label="GitHub 源码"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a><a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer" title="X @riba2534" aria-label="X @riba2534"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg></a></div>
+  <div id="radarWrap"><canvas id="radar"></canvas><div class="lbl" id="radarLbl">运输船</div></div>
+  <div id="clinks"><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer" data-i18n-title="menu.linkGithub" title="GitHub 源码" aria-label="GitHub 源码"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a><a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer" data-i18n-title="menu.linkX" title="X @riba2534" aria-label="X @riba2534"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg></a></div>
   <div id="feed"></div>
   <div id="vitals">
     <div class="vbox" id="hpBox"><div class="ic">✚</div><div class="val" id="hpVal">100</div></div>
@@ -667,79 +806,93 @@ const TEMPLATE = `
   <div id="toast"></div>
   <div id="protect"></div>
   <div id="nameTip"></div>
-  <div id="practice" class="hidden"><div class="ph"><b>练习靶场</b><span id="prHits">命中 0</span><span id="prWeapon"></span></div><div id="prTargets"></div><div id="prGuns">${PR_GUN_BTNS}</div></div>
+  <div id="practice" class="hidden"><div class="ph"><b data-i18n="hud.practiceTitle">练习靶场</b><span id="prHits">命中 0</span><span id="prWeapon"></span></div><div id="prTargets"></div><div id="prGuns">${PR_GUN_BTNS}</div></div>
   <div id="board" class="hidden tbl"><h3><span id="boardTitle">运输船 · 团队竞技</span><span>Tab</span></h3><div id="boardBody"></div></div>
   <div id="touch" class="hidden"></div>
 </div>
 
-<div id="loading" class="screen"><div class="t" id="loadTitle">运 输 船</div><div class="s" id="loadTxt">LOADING</div><div class="bar"><i id="loadBar"></i></div><div class="tip">小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。</div></div>
+<div id="loading" class="screen"><div class="t" id="loadTitle">运 输 船</div><div class="s" id="loadTxt" data-i18n="common.loading">LOADING</div><div class="bar"><i id="loadBar"></i></div><div class="tip" data-i18n="load.tip">小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。</div></div>
 
 <div id="menu" class="screen hidden">
   <div class="menuBox">
     <div class="title">
-      <div class="logo">CROSSFIRE · 团队竞技</div>
+      <img id="brandMark" class="hidden" alt="" draggable="false">
+      <div class="logo" data-i18n="menu.logo">CROSSFIRE · 团队竞技</div>
       <h1 id="mapTitle">运输船</h1>
       <div class="en" id="mapEn">TRANSPORT SHIP</div>
       <p id="mapBlurb"></p>
       <div class="keys">
-        <kbd>W A S D</kbd><span>移动　<kbd>Shift</kbd> 静步　<kbd>空格</kbd> 跳　<kbd>C</kbd> 蹲</span>
-        <kbd>鼠标左键</kbd><span>开火　<kbd>右键</kbd> 狙击开镜 / 刀重击</span>
-        <kbd>1 2 3 4</kbd><span>主武器 / 手枪 / 刀 / 手雷　<kbd>Q</kbd> 快切　<kbd>滚轮</kbd> 切换</span>
-        <kbd>5</kbd><span>C4（携带时）　<kbd>E</kbd> 拆包 / 拾取（拆包优先）　<kbd>G</kbd> 丢弃 C4</span>
-        <kbd>R</kbd><span>换弹　<kbd>F</kbd> 检视武器　<kbd>B</kbd> 更换主武器</span>
-        <kbd>Tab</kbd><span>计分板　<kbd>Esc</kbd> 暂停 / 设置</span>
+        <kbd>W A S D</kbd><span data-i18n="menu.key.move">移动</span>
+        <kbd>Shift</kbd><span data-i18n="menu.key.walk">静步</span>
+        <kbd data-i18n="menu.key.space">空格</kbd><span data-i18n="menu.key.jump">跳</span>
+        <kbd>C</kbd><span data-i18n="menu.key.crouch">蹲</span>
+        <kbd data-i18n="menu.key.lmb">鼠标左键</kbd><span data-i18n="menu.key.fire">开火</span>
+        <kbd data-i18n="menu.key.rmb">右键</kbd><span data-i18n="menu.key.scope">狙击开镜 / 刀重击</span>
+        <kbd>1 2 3 4</kbd><span data-i18n="menu.key.slots">主武器 / 手枪 / 刀 / 手雷</span>
+        <kbd>Q</kbd><span data-i18n="menu.key.quickSwap">快切</span>
+        <kbd data-i18n="menu.key.wheel">滚轮</kbd><span data-i18n="menu.key.cycleSwitch">切换</span>
+        <kbd>5</kbd><span data-i18n="menu.key.c4">C4（携带时）</span>
+        <kbd>E</kbd><span data-i18n="menu.key.spab">拆包 / 拾取（拆包优先）</span>
+        <kbd>G</kbd><span data-i18n="menu.key.dropC4">丢弃 C4</span>
+        <kbd>R</kbd><span data-i18n="menu.key.reload">换弹</span>
+        <kbd>F</kbd><span data-i18n="menu.key.inspect">检视武器</span>
+        <kbd>B</kbd><span data-i18n="menu.key.changePrimary">更换主武器</span>
+        <kbd>Tab</kbd><span data-i18n="menu.key.scoreboard">计分板</span>
+        <kbd>Esc</kbd><span data-i18n="menu.key.pauseSettings">暂停 / 设置</span>
       </div>
-      <div class="note hidden" id="touchNote">检测到触屏设备：已启用虚拟摇杆（左侧移动、右侧滑动视角）。电脑 + 鼠标体验最佳。</div>
+      <div class="note hidden" id="touchNote" data-i18n="menu.touchNote">检测到触屏设备：已启用虚拟摇杆（左侧移动、右侧滑动视角）。电脑 + 鼠标体验最佳。</div>
     </div>
     <div class="opts">
-      <div class="opt"><div class="lab">地图</div><div class="seg" data-k="map" id="mapSeg"></div></div>
-      <div class="opt"><div class="lab">模式</div><div class="seg" data-k="mode" id="modeSeg"></div></div>
-      <div class="opt"><div class="lab">阵营</div><div class="seg team" data-k="team"><button data-v="BL">潜伏者<small>Black List</small></button><button data-v="GR">保卫者<small>Global Risk</small></button></div></div>
-      <div class="opt"><div class="lab">主武器</div><div class="seg" data-k="primary"><button data-v="ak47">AK-47</button><button data-v="m4a1">M4A1</button><button data-v="awm">AWM</button><button data-v="mp5">MP5</button></div></div>
+      <div class="opt"><div class="lab" data-i18n="menu.map">地图</div><div class="seg" data-k="map" id="mapSeg"></div></div>
+      <div class="opt"><div class="lab" data-i18n="menu.mode">模式</div><div class="seg" data-k="mode" id="modeSeg"></div></div>
+      <div class="opt"><div class="lab" data-i18n="menu.team">阵营</div><div class="seg team" data-k="team"><button data-v="BL"><span data-i18n="team.bl.name">潜伏者</span><small data-i18n="team.bl.sub">Black List</small></button><button data-v="GR"><span data-i18n="team.gr.name">保卫者</span><small data-i18n="team.gr.sub">Global Risk</small></button></div></div>
+      <div class="opt"><div class="lab" data-i18n="menu.primary">主武器</div><div class="seg" data-k="primary"><button data-v="ak47" data-i18n="weapon.ak47.name">AK-47</button><button data-v="m4a1" data-i18n="weapon.m4a1.name">M4A1</button><button data-v="awm" data-i18n="weapon.awm.name">AWM</button><button data-v="mp5" data-i18n="weapon.mp5.name">MP5</button></div></div>
       <div class="row2">
-        <div class="opt"><div class="lab">对战规模</div><div class="seg" data-k="size"><button data-v="4">4v4</button><button data-v="6">6v6</button><button data-v="8">8v8</button></div></div>
-        <div class="opt"><div class="lab">目标击杀</div><div class="seg" data-k="goal"><button data-v="30">30</button><button data-v="50">50</button><button data-v="100">100</button></div></div>
+        <div class="opt"><div class="lab" data-i18n="menu.teamSize">对战规模</div><div class="seg" data-k="size"><button data-v="4">4v4</button><button data-v="6">6v6</button><button data-v="8">8v8</button></div></div>
+        <div class="opt"><div class="lab" data-i18n="menu.goalKills">目标击杀</div><div class="seg" data-k="goal"><button data-v="30">30</button><button data-v="50">50</button><button data-v="100">100</button></div></div>
       </div>
-      <div class="opt"><div class="lab">电脑难度</div><div class="seg" data-k="diff"><button data-v="easy">简单</button><button data-v="normal">普通</button><button data-v="hard">困难</button><button data-v="hell">地狱</button></div></div>
+      <div class="opt"><div class="lab" data-i18n="menu.difficulty">电脑难度</div><div class="seg" data-k="diff"><button data-v="easy" data-i18n="diff.easy">简单</button><button data-v="normal" data-i18n="diff.normal">普通</button><button data-v="hard" data-i18n="diff.hard">困难</button><button data-v="hell" data-i18n="diff.hell">地狱</button></div></div>
       <div class="row2">
-        <div class="opt"><div class="lab">时间</div><div class="seg" data-k="tod"><button data-v="day">白天</button><button data-v="dusk">黄昏</button></div></div>
-        <div class="opt"><div class="lab">画质</div><div class="seg" data-k="quality"><button data-v="low">流畅</button><button data-v="medium">均衡</button><button data-v="high">极致</button></div></div>
+        <div class="opt"><div class="lab" data-i18n="menu.timeOfDay">时间</div><div class="seg" data-k="tod"><button data-v="day" data-i18n="tod.day">白天</button><button data-v="dusk" data-i18n="tod.dusk">黄昏</button></div></div>
+        <div class="opt"><div class="lab" data-i18n="menu.quality">画质</div><div class="seg" data-k="quality"><button data-v="low" data-i18n="quality.low">流畅</button><button data-v="medium" data-i18n="quality.medium">均衡</button><button data-v="high" data-i18n="quality.high">极致</button></div></div>
       </div>
       <div class="row3">
-        <div class="opt"><div class="lab">灵敏度</div><div class="slider" data-k="sens"><input type="range" min="0.2" max="3" step="0.05"><span></span></div></div>
-        <div class="opt"><div class="lab">视野 FOV</div><div class="slider" data-k="fov"><input type="range" min="65" max="100" step="1"><span></span></div></div>
-        <div class="opt"><div class="lab">音量</div><div class="slider" data-k="vol"><input type="range" min="0" max="1" step="0.05"><span></span></div></div>
+        <div class="opt"><div class="lab" data-i18n="menu.sensitivity">灵敏度</div><div class="slider" data-k="sens"><input type="range" min="0.2" max="3" step="0.05"><span></span></div></div>
+        <div class="opt"><div class="lab" data-i18n="menu.fov">视野 FOV</div><div class="slider" data-k="fov"><input type="range" min="65" max="100" step="1"><span></span></div></div>
+        <div class="opt"><div class="lab" data-i18n="menu.volume">音量</div><div class="slider" data-k="vol"><input type="range" min="0" max="1" step="0.05"><span></span></div></div>
       </div>
+      <div class="opt"><div class="lab" data-i18n="settings.language">语言</div><div class="seg langSeg" id="langSeg"><button data-v="auto" data-i18n="settings.languageAuto">自动</button><button data-v="zh" data-i18n="settings.languageZh">简体中文</button><button data-v="en" data-i18n="settings.languageEn">English</button></div></div>
       <div class="opt" id="profileBox">
-        <div class="lab">军衔档案</div>
+        <div class="lab" data-i18n="menu.profile">军衔档案</div>
         <div id="rankRow"><span id="rankName"></span><span id="rankLevel"></span><div class="rankBar"><i id="rankFill"></i></div><span id="rankXp"></span></div>
         <div class="seg" id="presetSeg"></div>
-        <div class="note hidden" id="profileNote">本地存档不可用，进度仅本次会话有效</div>
+        <div class="note hidden" id="profileNote" data-i18n="error.storageUnavailable">本地存档不可用，进度仅本次会话有效</div>
       </div>
-      <button class="go" id="btnStart">开 始 游 戏</button>
-      <div class="note">点击开始后鼠标将被锁定，按 Esc 暂停。画质切换会重新加载页面。</div>
-      <div class="mlinks"><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer">GitHub 源码</a><span>·</span><a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer">X @riba2534</a></div>
+      <button class="go" id="btnStart" data-i18n="menu.start">开 始 游 戏</button>
+      <div class="note" data-i18n="menu.lockNote">点击开始后鼠标将被锁定，按 Esc 暂停。画质切换会重新加载页面。</div>
+      <div class="mlinks"><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer" data-i18n="menu.linkGithub">GitHub 源码</a><span>·</span><a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer" data-i18n="menu.linkX">X @riba2534</a></div>
     </div>
   </div>
 </div>
 
-<div id="pause" class="screen hidden"><div class="pauseBox"><h2>暂停</h2>
-  <div class="opt"><div class="lab">鼠标灵敏度</div><div class="slider" data-k="sens"><input type="range" min="0.2" max="3" step="0.05"><span></span></div></div>
-  <div class="opt"><div class="lab">视野 FOV</div><div class="slider" data-k="fov"><input type="range" min="65" max="100" step="1"><span></span></div></div>
-  <div class="opt"><div class="lab">音量</div><div class="slider" data-k="vol"><input type="range" min="0" max="1" step="0.05"><span></span></div></div>
-  <div class="opt"><div class="lab">时间</div><div class="seg" data-k="tod"><button data-v="day">白天</button><button data-v="dusk">黄昏</button></div></div>
-  <button class="go" id="btnResume">继 续</button><button class="go sec" id="btnQuit" style="margin-top:10px">退出到主菜单</button>
+<div id="pause" class="screen hidden"><div class="pauseBox"><h2 data-i18n="menu.pause">暂停</h2>
+  <div class="opt"><div class="lab" data-i18n="menu.mouseSensitivity">鼠标灵敏度</div><div class="slider" data-k="sens"><input type="range" min="0.2" max="3" step="0.05"><span></span></div></div>
+  <div class="opt"><div class="lab" data-i18n="menu.fov">视野 FOV</div><div class="slider" data-k="fov"><input type="range" min="65" max="100" step="1"><span></span></div></div>
+  <div class="opt"><div class="lab" data-i18n="menu.volume">音量</div><div class="slider" data-k="vol"><input type="range" min="0" max="1" step="0.05"><span></span></div></div>
+  <div class="opt"><div class="lab" data-i18n="menu.timeOfDay">时间</div><div class="seg" data-k="tod"><button data-v="day" data-i18n="tod.day">白天</button><button data-v="dusk" data-i18n="tod.dusk">黄昏</button></div></div>
+  <div class="opt"><div class="lab" data-i18n="settings.language">语言</div><div class="seg langSeg" id="langSegPause"><button data-v="auto" data-i18n="settings.languageAuto">自动</button><button data-v="zh" data-i18n="settings.languageZh">简体中文</button><button data-v="en" data-i18n="settings.languageEn">English</button></div></div>
+  <button class="go" id="btnResume" data-i18n="menu.resume">继 续</button><button class="go sec" id="btnQuit" style="margin-top:10px" data-i18n="menu.quit">退出到主菜单</button>
 </div></div>
 
-<div id="loadout" class="screen hidden"><div class="loadBox"><h2>更换主武器</h2><div class="sub">团队竞技：出生点内立即生效，否则复活时生效。爆破：准备期内立即生效，交战期更换下回合生效。副武器沙漠之鹰、军刀、手雷自动配备。</div>
+<div id="loadout" class="screen hidden"><div class="loadBox"><h2 data-i18n="menu.loadoutTitle">更换主武器</h2><div class="sub" data-i18n="menu.loadoutSub">团队竞技：出生点内立即生效，否则复活时生效。爆破：准备期内立即生效，交战期更换下回合生效。副武器沙漠之鹰、军刀、手雷自动配备。</div>
   <div class="cards" id="loadCards">${PRIM_CARDS}</div>
-  <button class="go sec" id="btnLoadClose" style="margin-top:14px">确 定（B）</button>
+  <button class="go sec" id="btnLoadClose" style="margin-top:14px" data-i18n="menu.loadoutOk">确 定（B）</button>
 </div></div>
 
 <div id="end" class="screen hidden"><div class="endBox">
   <div class="res" id="endRes">胜利</div><div class="sc" id="endSc"></div><div class="mvp" id="endMvp"></div><div class="mvp" id="endMe" style="color:#dfe4e8"></div>
   <div id="endAward" class="hidden"></div>
   <div id="endTable" class="tbl"></div>
-  <div style="display:flex;gap:10px;margin-top:16px"><button class="go" id="btnAgain">再 来 一 局</button><button class="go sec" id="btnMenu">主菜单</button></div>
+  <div style="display:flex;gap:10px;margin-top:16px"><button class="go" id="btnAgain" data-i18n="menu.again">再 来 一 局</button><button class="go sec" id="btnMenu" data-i18n="menu.toMenu">主菜单</button></div>
 </div></div>
 `;

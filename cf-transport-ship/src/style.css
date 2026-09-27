@@ -234,6 +234,29 @@ body.lk #clinks{opacity:.22}
 #touch{position:absolute;inset:0;pointer-events:none}
 #touch .pad{position:absolute;pointer-events:auto;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25)}
 #touch .btn{position:absolute;pointer-events:auto;border-radius:50%;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.35);display:grid;place-items:center;font-size:13px;color:#fff}
+/* ---------- 品牌标识（US-01）：按当前语言选图，仅换 src ---------- */
+#brandMark{width:64px;height:64px;display:block;margin-bottom:8px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}
+#brandMark.hidden{display:none}
+
+/* ---------- 英文文案弹性（html[lang=en] 由 HUD.applyLocale 维护）：
+   放宽字距、允许换行，避免长文案遮挡中央战斗信息 ---------- */
+html[lang="en"] .title .logo{letter-spacing:3px}
+html[lang="en"] .title h1{font-size:44px;letter-spacing:4px}
+html[lang="en"] .title .en{letter-spacing:3px}
+html[lang="en"] .go{letter-spacing:3px;padding-left:10px;padding-right:10px}
+html[lang="en"] .go.sec{letter-spacing:2px}
+html[lang="en"] .pauseBox h2{letter-spacing:3px}
+html[lang="en"] .endBox .res{font-size:44px;letter-spacing:8px}
+html[lang="en"] .opt .lab{letter-spacing:1px}
+html[lang="en"] #loading .t{letter-spacing:4px}
+html[lang="en"] #score .team{min-width:118px;padding:4px 10px}
+html[lang="en"] #score .mid .goal{white-space:normal;line-height:1.3}
+html[lang="en"] #objHint{white-space:normal;max-width:72vw;text-align:center}
+html[lang="en"] #center .small{white-space:normal;max-width:78vw;margin-left:auto;margin-right:auto}
+html[lang="en"] #toast{white-space:normal;max-width:78vw;text-align:center}
+html[lang="en"] #protect{letter-spacing:1px}
+html[lang="en"] .kf{font-size:13px}
+
 @media (max-width:760px){
   .menuBox{grid-template-columns:1fr;padding:18px}
   .title h1{font-size:40px}
@@ -242,4 +265,9 @@ body.lk #clinks{opacity:.22}
   .vbox .val{font-size:28px}.vbox{min-width:96px}
   #ammo .mag{font-size:34px}
   .cards{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:760px){
+  html[lang="en"] .title h1{font-size:32px;letter-spacing:2px}
+  html[lang="en"] #objHint{max-width:86vw}
+  html[lang="en"] #center .small{max-width:88vw}
 }
