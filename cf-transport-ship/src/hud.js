@@ -763,7 +763,10 @@ export class HUD {
   }
   drawRadar(me, actors, t) {
     const ctx = this.radarCtx, cv = this.el.radar;
-    const W = cv.width = cv.clientWidth * 1.5 | 0, H = cv.height = cv.clientHeight * 1.5 | 0;
+    const W = cv.clientWidth * 1.5 | 0, H = cv.clientHeight * 1.5 | 0;
+    // 后备存储仅在实际尺寸变化的那一维重设（重赋 width/height 会清空画布且代价高）
+    if (cv.width !== W) cv.width = W;
+    if (cv.height !== H) cv.height = H;
     ctx.clearRect(0, 0, W, H);
     if (!this.radarImg || !this.radarOff) return;
     const S = this.radarS, off = this.radarOff, zoom = 0.55 * (W / 294);
@@ -800,9 +803,13 @@ export class HUD {
     // 自己
     ctx.fillStyle = '#ffd24a';
     ctx.beginPath(); ctx.moveTo(W / 2, H / 2 - 10); ctx.lineTo(W / 2 + 7, H / 2 + 8); ctx.lineTo(W / 2, H / 2 + 4); ctx.lineTo(W / 2 - 7, H / 2 + 8); ctx.closePath(); ctx.fill();
-    // 视野扇形
-    const g = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.45);
-    g.addColorStop(0, 'rgba(255,255,255,.18)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    // 视野扇形（渐变按实际后备尺寸缓存，尺寸不变则复用）
+    if (!this._radarGrad || this._radarGradW !== cv.width || this._radarGradH !== cv.height) {
+      this._radarGrad = ctx.createRadialGradient(cv.width / 2, cv.height / 2, 0, cv.width / 2, cv.height / 2, cv.width * 0.45);
+      this._radarGrad.addColorStop(0, 'rgba(255,255,255,.18)'); this._radarGrad.addColorStop(1, 'rgba(255,255,255,0)');
+      this._radarGradW = cv.width; this._radarGradH = cv.height;
+    }
+    const g = this._radarGrad;
     ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(W / 2, H / 2); ctx.arc(W / 2, H / 2, W * 0.45, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6); ctx.closePath(); ctx.fill();
   }
 }
