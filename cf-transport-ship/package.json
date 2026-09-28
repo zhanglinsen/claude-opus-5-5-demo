@@ -8,6 +8,7 @@
     "build:offline": "node build.mjs --target=offline",
     "build:y8": "node build.mjs --target=y8",
     "build:gamemonetize": "node build.mjs --target=gamemonetize",
+    "build:configured": "node build.mjs --configured",
     "dev": "node build.mjs --dev && node scripts/serve.mjs",
     "serve": "node scripts/serve.mjs",
     "test": "node --test \"tests/unit/*.test.mjs\"",

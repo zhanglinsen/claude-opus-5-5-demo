@@ -2,9 +2,13 @@
 // 本模块不 import 任何适配器：适配器选择由主控（src/main.js）按 kind 执行，
 // 保证三种构建互不加载彼此的外部 SDK。
 //
-// 正式 ID 约定：包内不含任何真实密钥。运营方在部署页注入 window.__PLATFORM_IDS__
-// （{ appId, gameId }）；缺失时进入 mock 模式——不创建平台适配器（回退离线适配器，
-// 不发起平台 SDK 外部请求），并生成明确标记 mock 的占位 ID 供诊断展示。
+// 凭据约定（两条路径）：默认三构建包内不含任何真实平台 ID，宿主页注入
+// window.__PLATFORM_IDS__（{ appId, gameId }），缺失时进入 mock 模式——不创建平台
+// 适配器（回退离线适配器，不发起平台 SDK 外部请求），并生成明确标记 mock 的占位
+// ID 供诊断展示；build:configured 配置包由构建期在主脚本之前内联同一全局，
+// 运行时经本模块解析直接得到 mock=false（SDK 失败仍安全退化）。本插件层保持
+// 可复用：不包含任何具体平台 ID（具体值在仓库根 platform-ids.json，
+// scripts/platform-ids.mjs 只负责构建期读取/校验并内联）。
 
 export const BUILD_TARGETS = Object.freeze(['offline', 'y8', 'gamemonetize']);
 

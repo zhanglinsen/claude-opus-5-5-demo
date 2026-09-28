@@ -2,6 +2,7 @@ node_modules
 dist
 .ultra/dispatch/__pycache__/
 .ultra/dispatch/logs/
+.ultra/logs/
 .ultra/snapshots/
 .ultra/dispatch/*.lane*-backup
 cf-transport-ship/scripts/probe-tmp.mjs

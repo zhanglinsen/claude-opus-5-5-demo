@@ -57,16 +57,18 @@
 ## 构建目标（offline | y8 | gamemonetize）
 
 ```bash
-npm run build            # 三目标一次全出（offline + y8 + gamemonetize）
+npm run build            # 三目标一次全出（offline + y8 + gamemonetize：离线 + 两个平台 mock 包）
 npm run build:offline    # 仅 dist/index.html（离线单文件，经典双图，中文默认）
 npm run build:y8         # dist/y8/index.html + y8-package.zip（平台原创双图，英语默认）
 npm run build:gamemonetize  # dist/gamemonetize/index.html + gamemonetize-package.zip（同上）
+npm run build:configured    # 正式 ID 配置包：只产出 dist/configured/{y8,gamemonetize}（见下）
 ```
 
 - 每个构建只开放自己的地图集，且只加载目标平台的 SDK：离线版开放运输船/沙漠灰、无平台 SDK；y8 版只含 Y8 适配器（`y8sdk`）；gamemonetize 版只含 GameMonetize 适配器（`SDK_GAME_PAUSE`/`SDK_GAME_START`）。当前平台单文件仍内嵌未开放的经典地图数据；正式公开发布前应剔除并复核素材。
-- **平台 ZIP**：根目录即 `index.html`，整包自包含（JS/CSS/纹理内联），当前仅供本地 mock 验证，取得正式 ID 并完成真实平台验证后才可提交；另含 `README.md`（上传与凭据注入说明）与 `manifest.json`。
-- **mock 标记（重要）**：本仓库不含任何真实平台 ID。未在宿主页注入 `window.__PLATFORM_IDS__ = { appId, gameId }` 时，平台构建以明确 mock 模式运行：`window.__PLATFORM_MOCK__`、`<html data-platform-mock="true">`、`manifest.json` 内 `"mock": true`，广告一律无填充、不发起任何平台 SDK 网络请求。**带 mock 标记的包不得作为正式版提交**；取得正式 Y8 App/Game ID 或 GameMonetize Game ID 后的线上行为仍待真实验证。
+- **平台 ZIP**：根目录即 `index.html`，整包自包含（JS/CSS/纹理内联）；另含 `README.md`（上传与凭据说明）与 `manifest.json`。默认平台 ZIP 为 mock 包，仅供本地 mock 验证；`build:configured` 另产出内联正式 ID 的非 mock 配置包（`dist/configured/`，见下）。两类包在真实平台验证完成前均不可公开提交。
+- **mock 标记（重要）**：默认三构建（含其平台 ZIP）不含任何真实平台 ID；正式客户端 ID 仅存于仓库根 `platform-ids.json`，且只在显式的 `build:configured` 构建中被内联进 `dist/configured/` 产物（默认三构建不被覆盖）。默认平台构建在宿主页未注入 `window.__PLATFORM_IDS__ = { appId, gameId }` 时以明确 mock 模式运行：`window.__PLATFORM_MOCK__`、`<html data-platform-mock="true">`、`manifest.json` 内 `"mock": true`，广告一律无填充、不发起任何平台 SDK 网络请求。**带 mock 标记的包不得作为正式版提交**；非 mock 的配置包在真实平台审核/广告验证完成前同样不可公开提交。
 - 构建隔离与 mock 逻辑有单测覆盖（`tests/unit/build-targets.test.mjs`、`platform-*.test.mjs`）。
+- **正式 ID 配置包（build:configured）**：从仓库根 `platform-ids.json`（本游戏专属、可整体替换的公开客户端 ID，非服务端密钥）读取 Y8 App/Game ID 与 GameMonetize Game ID，只生成 `dist/configured/y8/` 与 `dist/configured/gamemonetize/` 两套单文件 HTML + 根目录 `index.html` 的 ZIP；在游戏主脚本之前内联 `window.__PLATFORM_IDS__`（上传后的平台宿主页不注入 ID），运行时直接走真实平台适配器（`mock=false`，SDK 失败仍安全退化为离线行为）。Y8 包只含它自己的两个 ID，GM 包只含它自己的 Game ID，默认三构建不含任何真实 ID 也不被覆盖；配置层在 `scripts/platform-ids.mjs`（构建期），`src/platform/` 插件层保持与具体凭据无关。**配置包仍不可公开提交**：真实平台审核/广告未验证，且平台包仍内嵌未开放的经典地图数据（manifest/包内 README 如实标记 `submissionAllowed:false`）。ID 缺失/为空时构建期明确失败，绝不产出伪正式包。配置逻辑单测见 `tests/unit/configured-build.test.mjs`；浏览器替身验证见 `node scripts/accept-configured-browser.mjs`（官方 SDK 地址本地路由替身，无真实网络/广告）。
 
 ## 命令
 
@@ -77,6 +79,7 @@ npm test                 # 单元测试（node:test，注册表/设置迁移/模
 npm run test:e2e         # 真实浏览器 e2e（playwright-core + 本机 Chrome，HTTP 与 file://）
 npm run test:e2e:desert  # 沙漠灰集成验收（路线物理走通/地标截图/运输船冒烟）
 node scripts/accept-platform-browser.mjs   # 平台扩展定向验收：三构建双语/mock/触屏/广告断点冒烟
+node scripts/accept-configured-browser.mjs # 配置包轻量验证：SDK 脚本路由替身，非 mock 适配器路径与 ID 传递
 node scripts/accept-gpu-pair.mjs --out <file.json> --roots '<json>' --runs '<json>'  # 同机 GPU FPS 配对测量（1080p，含负载采样）
 ```
 

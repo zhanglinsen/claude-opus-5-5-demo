@@ -11,8 +11,10 @@ import { resolvePlatformConfig, mockMarker } from './platform/config.js';
 import { createPlatformLocaleBridge } from './platform/locale-bridge.js';
 
 (async () => {
-  // 正式 ID 不打进包内（包不含任何真实密钥）：部署页经 window.__PLATFORM_IDS__ 注入；
-  // 缺失时进入 mock 模式——不创建平台适配器、不请求平台 SDK，并明确标记。
+  // 平台凭据两条路径：默认三构建包内不含任何真实平台 ID，宿主页经 window.__PLATFORM_IDS__
+  // 注入，缺失时进入 mock 模式——不创建平台适配器、不请求平台 SDK，并明确标记；
+  // build:configured 配置包由构建期在主脚本之前内联 window.__PLATFORM_IDS__，
+  // 运行时走同一解析路径直接得到 mock=false 的真实平台适配器（SDK 失败仍安全退化）。
   const ids = typeof window !== 'undefined' && window.__PLATFORM_IDS__ ? window.__PLATFORM_IDS__ : {};
   const config = resolvePlatformConfig(__BUILD_TARGET__, ids);
 
