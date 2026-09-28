@@ -12,7 +12,13 @@ export const CATALOGS = {
     'common.loading': '加载中…',
 
     // 菜单
-    'menu.logo': 'CROSSFIRE · 团队竞技',
+    'menu.logo': '无限工作室',
+    'menu.gameTitle': '前线行动',
+    'menu.tab.battle': '作战大厅',
+    'menu.tab.loadout': '装备',
+    'menu.tab.settings': '设置',
+    'menu.tab.controls': '操作',
+    'menu.arena': '当前战区',
     'menu.start': '开 始 游 戏',
     'menu.resume': '继 续',
     'menu.pause': '暂停',
@@ -264,7 +270,7 @@ export const CATALOGS = {
     'load.fail': '加载失败：{msg}（请使用最新版 Chrome / Edge / Safari）',
 
     // Task 9：HUD 本地化补充键（菜单键位拆分 / 换包说明 / 槽位与观战 / 结算 MVP / 触屏按钮）
-    'menu.docTitle': '穿越火线 3D',
+    'menu.docTitle': '前线行动 3D',
     'menu.key.space': '空格',
     'menu.key.lmb': '鼠标左键',
     'menu.key.rmb': '右键',
@@ -332,7 +338,13 @@ export const CATALOGS = {
     'common.loading': 'LOADING',
 
     // Menu
-    'menu.logo': 'CROSSFIRE · TEAM DEATHMATCH',
+    'menu.logo': 'INFINITY STUDIO',
+    'menu.gameTitle': 'FRONTLINE OPS',
+    'menu.tab.battle': 'BATTLE LOBBY',
+    'menu.tab.loadout': 'LOADOUT',
+    'menu.tab.settings': 'SETTINGS',
+    'menu.tab.controls': 'CONTROLS',
+    'menu.arena': 'CURRENT THEATER',
     'menu.start': 'START GAME',
     'menu.resume': 'RESUME',
     'menu.pause': 'PAUSED',
@@ -584,7 +596,7 @@ export const CATALOGS = {
     'load.fail': 'Failed to load: {msg} (please use the latest Chrome / Edge / Safari)',
 
     // Task 9: HUD localization additions (menu key rows / loadout note / slots & spectating / MVP / touch buttons)
-    'menu.docTitle': 'CrossFire 3D',
+    'menu.docTitle': 'Frontline Ops 3D',
     'menu.key.space': 'Space',
     'menu.key.lmb': 'Left click',
     'menu.key.rmb': 'Right click',
@@ -649,16 +661,16 @@ export const CATALOGS = {
 // 平台公开版的品牌中立覆盖（Task 11 / US-05）：编译目标非 offline 时，
 // createGameLocale 用 withPlatformBranding(CATALOGS) 替换公开可见的原作品牌词
 //（CrossFire / Black List / Global Risk）。只覆盖既有键，键集不变（目录体检仍通过）；
-// 离线版 CATALOGS 原样保留，不侵入旧体验。
+// 离线版仍保留地图及阵营原有显示名；菜单统一使用工作室品牌。
 export const PLATFORM_BRAND_OVERRIDE = Object.freeze({
   zh: Object.freeze({
-    'menu.logo': 'FRONTLINE OPS · 团队竞技',
+    'menu.logo': '无限工作室',
     'menu.docTitle': '前线行动 3D',
     'team.bl.sub': 'Attackers',
     'team.gr.sub': 'Defenders',
   }),
   en: Object.freeze({
-    'menu.logo': 'FRONTLINE OPS · TEAM DEATHMATCH',
+    'menu.logo': 'INFINITY STUDIO',
     'menu.docTitle': 'Frontline Ops 3D',
     'team.bl.name': 'Attackers',
     'team.gr.name': 'Defenders',

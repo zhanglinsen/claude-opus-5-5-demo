@@ -272,10 +272,53 @@ export class HUD {
   updateBrand() {
     const img = this.el.brandMark;
     if (!img || !this.brand) return;
-    const mark = this.brand.getMark('dark');
+    const mark = this.brand.getMark('transparent');
     if (!mark) { img.classList.add('hidden'); return; }
     img.src = mark.src; img.alt = mark.alt;
     img.classList.remove('hidden');
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (favicon) favicon.href = mark.src;
+  }
+
+  // ---------- 大厅导航（经典 FPS 大厅 tab）：作战默认可见，其余面板 hidden；
+  // role=tab/aria-selected/aria-controls 语义 + 方向键/Home/End；状态只在点击/键盘时变更，
+  // 语言切换与 show('menu') 不重置（面板文案由 applyStaticText 原地改写，监听器不重绑）
+  initLobbyNav() {
+    this.navBtns = [...this.root.querySelectorAll('.lobbyNav .navBtn')];
+    for (const b of this.navBtns) {
+      b.addEventListener('click', () => {
+        this.selectLobbyTab(b.dataset.tab);
+        this.g.audio?.playUI('click');
+      });
+      b.addEventListener('keydown', (e) => {
+        const i = this.navBtns.indexOf(b);
+        let n = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = (i + 1) % this.navBtns.length;
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = (i + this.navBtns.length - 1) % this.navBtns.length;
+        else if (e.key === 'Home') n = 0;
+        else if (e.key === 'End') n = this.navBtns.length - 1;
+        if (n == null) return;
+        e.preventDefault();
+        this.selectLobbyTab(this.navBtns[n].dataset.tab);
+        this.navBtns[n].focus();
+      });
+    }
+    this.selectLobbyTab('battle');
+  }
+  selectLobbyTab(name) {
+    if (!this.navBtns || !this.navBtns.some((b) => b.dataset.tab === name)) return;
+    for (const b of this.navBtns) {
+      const on = b.dataset.tab === name;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+      const panel = this.el[b.getAttribute('aria-controls')];
+      if (panel) panel.hidden = !on;
+    }
+  }
+  // 仅 TDM 的击杀目标设置在 practice/bomb 下隐藏（只收 UI，不改变任何实际规则）；
+  // 高亮值经 menuMode()（镜像开局解析），与模式分段高亮同源
+  updateGoalVisibility() {
+    if (this.el.goalOpt) this.el.goalOpt.hidden = ['bomb', 'practice'].includes(this.menuMode());
   }
 
   // ---------- 菜单 ----------
@@ -333,15 +376,18 @@ export class HUD {
         b.classList.add('on');
         this.opts.mode = m.id;
         this.saveOpts();
+        this.updateGoalVisibility();
         this.g.onOption?.('mode', m.id);
         this.g.audio?.playUI('click');
       });
       seg.appendChild(b);
     }
+    this.updateGoalVisibility();
   }
   buildMenu() {
     const o = this.opts;
     this.buildMapSeg();
+    this.initLobbyNav();
     // 通用分段（mapSeg 已在 buildMapSeg 内自带绑定；modeSeg 按图重建时自绑；langSeg 走 LocaleService）
     const segs = this.root.querySelectorAll('.seg[data-k]:not(#mapSeg)');
     for (const s of segs) {
@@ -402,6 +448,7 @@ export class HUD {
     for (const sl of this.root.querySelectorAll('.slider[data-k]')) {
       const k = sl.dataset.k; sl.querySelector('input').value = o[k]; sl.querySelector('span').textContent = (+o[k]).toFixed(k === 'fov' ? 0 : 2);
     }
+    this.updateGoalVisibility();
   }
   show(name) {
     if (name === 'menu' || name === 'pause') this.syncControls();
@@ -813,65 +860,87 @@ const TEMPLATE = `
 
 <div id="loading" class="screen"><div class="t" id="loadTitle">运 输 船</div><div class="s" id="loadTxt" data-i18n="common.loading">LOADING</div><div class="bar"><i id="loadBar"></i></div><div class="tip" data-i18n="load.tip">小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。</div></div>
 
-<div id="menu" class="screen hidden">
-  <div class="menuBox">
-    <div class="title">
+<div id="menu" class="screen lobbyScreen hidden">
+  <div class="lobby">
+    <header class="lobbyTop">
       <img id="brandMark" class="hidden" alt="" draggable="false">
-      <div class="logo" data-i18n="menu.logo">CROSSFIRE · 团队竞技</div>
-      <h1 id="mapTitle">运输船</h1>
-      <div class="en" id="mapEn">TRANSPORT SHIP</div>
-      <p id="mapBlurb"></p>
-      <div class="keys">
-        <kbd>W A S D</kbd><span data-i18n="menu.key.move">移动</span>
-        <kbd>Shift</kbd><span data-i18n="menu.key.walk">静步</span>
-        <kbd data-i18n="menu.key.space">空格</kbd><span data-i18n="menu.key.jump">跳</span>
-        <kbd>C</kbd><span data-i18n="menu.key.crouch">蹲</span>
-        <kbd data-i18n="menu.key.lmb">鼠标左键</kbd><span data-i18n="menu.key.fire">开火</span>
-        <kbd data-i18n="menu.key.rmb">右键</kbd><span data-i18n="menu.key.scope">狙击开镜 / 刀重击</span>
-        <kbd>1 2 3 4</kbd><span data-i18n="menu.key.slots">主武器 / 手枪 / 刀 / 手雷</span>
-        <kbd>Q</kbd><span data-i18n="menu.key.quickSwap">快切</span>
-        <kbd data-i18n="menu.key.wheel">滚轮</kbd><span data-i18n="menu.key.cycleSwitch">切换</span>
-        <kbd>5</kbd><span data-i18n="menu.key.c4">C4（携带时）</span>
-        <kbd>E</kbd><span data-i18n="menu.key.spab">拆包 / 拾取（拆包优先）</span>
-        <kbd>G</kbd><span data-i18n="menu.key.dropC4">丢弃 C4</span>
-        <kbd>R</kbd><span data-i18n="menu.key.reload">换弹</span>
-        <kbd>F</kbd><span data-i18n="menu.key.inspect">检视武器</span>
-        <kbd>B</kbd><span data-i18n="menu.key.changePrimary">更换主武器</span>
-        <kbd>Tab</kbd><span data-i18n="menu.key.scoreboard">计分板</span>
-        <kbd>Esc</kbd><span data-i18n="menu.key.pauseSettings">暂停 / 设置</span>
+      <div class="lobbyBrand">
+        <div class="logo" data-i18n="menu.logo">无限工作室</div>
+        <div class="gameTitle" data-i18n="menu.gameTitle">前线行动</div>
       </div>
-      <div class="note hidden" id="touchNote" data-i18n="menu.touchNote">检测到触屏设备：已启用虚拟摇杆（左侧移动、右侧滑动视角）。电脑 + 鼠标体验最佳。</div>
+      <nav class="lobbyNav" role="tablist" aria-label="lobby-nav">
+        <button class="navBtn" role="tab" id="navBattle" data-tab="battle" aria-controls="panelBattle" aria-selected="true" tabindex="0" data-i18n="menu.tab.battle">作战</button>
+        <button class="navBtn" role="tab" id="navLoadout" data-tab="loadout" aria-controls="panelLoadout" aria-selected="false" tabindex="-1" data-i18n="menu.tab.loadout">装备</button>
+        <button class="navBtn" role="tab" id="navSettings" data-tab="settings" aria-controls="panelSettings" aria-selected="false" tabindex="-1" data-i18n="menu.tab.settings">设置</button>
+        <button class="navBtn" role="tab" id="navControls" data-tab="controls" aria-controls="panelControls" aria-selected="false" tabindex="-1" data-i18n="menu.tab.controls">操作</button>
+      </nav>
+    </header>
+    <div class="lobbyMain">
+      <section class="arena">
+        <div class="arenaOverline" data-i18n="menu.arena">战区</div>
+        <h1 id="mapTitle">运输船</h1>
+        <div class="en" id="mapEn">TRANSPORT SHIP</div>
+        <p id="mapBlurb"></p>
+        <div class="opt"><div class="lab" data-i18n="menu.map">地图</div><div class="seg mapCards" data-k="map" id="mapSeg"></div></div>
+      </section>
+      <aside class="lobbySide">
+        <div class="lobbyPanel" id="panelBattle" role="tabpanel" aria-labelledby="navBattle">
+          <div class="opt"><div class="lab" data-i18n="menu.mode">模式</div><div class="seg" data-k="mode" id="modeSeg"></div></div>
+          <div class="opt"><div class="lab" data-i18n="menu.team">阵营</div><div class="seg team" data-k="team"><button data-v="BL"><span data-i18n="team.bl.name">潜伏者</span><small data-i18n="team.bl.sub">Black List</small></button><button data-v="GR"><span data-i18n="team.gr.name">保卫者</span><small data-i18n="team.gr.sub">Global Risk</small></button></div></div>
+          <div class="row2">
+            <div class="opt"><div class="lab" data-i18n="menu.teamSize">对战规模</div><div class="seg" data-k="size"><button data-v="4">4v4</button><button data-v="6">6v6</button><button data-v="8">8v8</button></div></div>
+            <div class="opt" id="goalOpt"><div class="lab" data-i18n="menu.goalKills">目标击杀</div><div class="seg" data-k="goal"><button data-v="30">30</button><button data-v="50">50</button><button data-v="100">100</button></div></div>
+          </div>
+          <div class="opt"><div class="lab" data-i18n="menu.difficulty">电脑难度</div><div class="seg" data-k="diff"><button data-v="easy" data-i18n="diff.easy">简单</button><button data-v="normal" data-i18n="diff.normal">普通</button><button data-v="hard" data-i18n="diff.hard">困难</button><button data-v="hell" data-i18n="diff.hell">地狱</button></div></div>
+        </div>
+        <div class="lobbyPanel" id="panelLoadout" role="tabpanel" aria-labelledby="navLoadout" hidden>
+          <div class="opt"><div class="lab" data-i18n="menu.primary">主武器</div><div class="seg" data-k="primary"><button data-v="ak47" data-i18n="weapon.ak47.name">AK-47</button><button data-v="m4a1" data-i18n="weapon.m4a1.name">M4A1</button><button data-v="awm" data-i18n="weapon.awm.name">AWM</button><button data-v="mp5" data-i18n="weapon.mp5.name">MP5</button></div></div>
+          <div class="opt" id="profileBox">
+            <div class="lab" data-i18n="menu.profile">军衔档案</div>
+            <div id="rankRow"><span id="rankName"></span><span id="rankLevel"></span><div class="rankBar"><i id="rankFill"></i></div><span id="rankXp"></span></div>
+            <div class="seg" id="presetSeg"></div>
+            <div class="note hidden" id="profileNote" data-i18n="error.storageUnavailable">本地存档不可用，进度仅本次会话有效</div>
+          </div>
+        </div>
+        <div class="lobbyPanel" id="panelSettings" role="tabpanel" aria-labelledby="navSettings" hidden>
+          <div class="row2">
+            <div class="opt"><div class="lab" data-i18n="menu.timeOfDay">时间</div><div class="seg" data-k="tod"><button data-v="day" data-i18n="tod.day">白天</button><button data-v="dusk" data-i18n="tod.dusk">黄昏</button></div></div>
+            <div class="opt"><div class="lab" data-i18n="menu.quality">画质</div><div class="seg" data-k="quality"><button data-v="low" data-i18n="quality.low">流畅</button><button data-v="medium" data-i18n="quality.medium">均衡</button><button data-v="high" data-i18n="quality.high">极致</button></div></div>
+          </div>
+          <div class="opt"><div class="lab" data-i18n="menu.sensitivity">灵敏度</div><div class="slider" data-k="sens"><input type="range" min="0.2" max="3" step="0.05"><span></span></div></div>
+          <div class="opt"><div class="lab" data-i18n="menu.fov">视野 FOV</div><div class="slider" data-k="fov"><input type="range" min="65" max="100" step="1"><span></span></div></div>
+          <div class="opt"><div class="lab" data-i18n="menu.volume">音量</div><div class="slider" data-k="vol"><input type="range" min="0" max="1" step="0.05"><span></span></div></div>
+          <div class="opt"><div class="lab" data-i18n="settings.language">语言</div><div class="seg langSeg" id="langSeg"><button data-v="auto" data-i18n="settings.languageAuto">自动</button><button data-v="zh" data-i18n="settings.languageZh">简体中文</button><button data-v="en" data-i18n="settings.languageEn">English</button></div></div>
+        </div>
+        <div class="lobbyPanel" id="panelControls" role="tabpanel" aria-labelledby="navControls" hidden>
+          <div class="keys">
+            <kbd>W A S D</kbd><span data-i18n="menu.key.move">移动</span>
+            <kbd>Shift</kbd><span data-i18n="menu.key.walk">静步</span>
+            <kbd data-i18n="menu.key.space">空格</kbd><span data-i18n="menu.key.jump">跳</span>
+            <kbd>C</kbd><span data-i18n="menu.key.crouch">蹲</span>
+            <kbd data-i18n="menu.key.lmb">鼠标左键</kbd><span data-i18n="menu.key.fire">开火</span>
+            <kbd data-i18n="menu.key.rmb">右键</kbd><span data-i18n="menu.key.scope">狙击开镜 / 刀重击</span>
+            <kbd>1 2 3 4</kbd><span data-i18n="menu.key.slots">主武器 / 手枪 / 刀 / 手雷</span>
+            <kbd>Q</kbd><span data-i18n="menu.key.quickSwap">快切</span>
+            <kbd data-i18n="menu.key.wheel">滚轮</kbd><span data-i18n="menu.key.cycleSwitch">切换</span>
+            <kbd>5</kbd><span data-i18n="menu.key.c4">C4（携带时）</span>
+            <kbd>E</kbd><span data-i18n="menu.key.spab">拆包 / 拾取（拆包优先）</span>
+            <kbd>G</kbd><span data-i18n="menu.key.dropC4">丢弃 C4</span>
+            <kbd>R</kbd><span data-i18n="menu.key.reload">换弹</span>
+            <kbd>F</kbd><span data-i18n="menu.key.inspect">检视武器</span>
+            <kbd>B</kbd><span data-i18n="menu.key.changePrimary">更换主武器</span>
+            <kbd>Tab</kbd><span data-i18n="menu.key.scoreboard">计分板</span>
+            <kbd>Esc</kbd><span data-i18n="menu.key.pauseSettings">暂停 / 设置</span>
+          </div>
+          <div class="note hidden" id="touchNote" data-i18n="menu.touchNote">检测到触屏设备：已启用虚拟摇杆（左侧移动、右侧滑动视角）。电脑 + 鼠标体验最佳。</div>
+        </div>
+      </aside>
     </div>
-    <div class="opts">
-      <div class="opt"><div class="lab" data-i18n="menu.map">地图</div><div class="seg" data-k="map" id="mapSeg"></div></div>
-      <div class="opt"><div class="lab" data-i18n="menu.mode">模式</div><div class="seg" data-k="mode" id="modeSeg"></div></div>
-      <div class="opt"><div class="lab" data-i18n="menu.team">阵营</div><div class="seg team" data-k="team"><button data-v="BL"><span data-i18n="team.bl.name">潜伏者</span><small data-i18n="team.bl.sub">Black List</small></button><button data-v="GR"><span data-i18n="team.gr.name">保卫者</span><small data-i18n="team.gr.sub">Global Risk</small></button></div></div>
-      <div class="opt"><div class="lab" data-i18n="menu.primary">主武器</div><div class="seg" data-k="primary"><button data-v="ak47" data-i18n="weapon.ak47.name">AK-47</button><button data-v="m4a1" data-i18n="weapon.m4a1.name">M4A1</button><button data-v="awm" data-i18n="weapon.awm.name">AWM</button><button data-v="mp5" data-i18n="weapon.mp5.name">MP5</button></div></div>
-      <div class="row2">
-        <div class="opt"><div class="lab" data-i18n="menu.teamSize">对战规模</div><div class="seg" data-k="size"><button data-v="4">4v4</button><button data-v="6">6v6</button><button data-v="8">8v8</button></div></div>
-        <div class="opt"><div class="lab" data-i18n="menu.goalKills">目标击杀</div><div class="seg" data-k="goal"><button data-v="30">30</button><button data-v="50">50</button><button data-v="100">100</button></div></div>
-      </div>
-      <div class="opt"><div class="lab" data-i18n="menu.difficulty">电脑难度</div><div class="seg" data-k="diff"><button data-v="easy" data-i18n="diff.easy">简单</button><button data-v="normal" data-i18n="diff.normal">普通</button><button data-v="hard" data-i18n="diff.hard">困难</button><button data-v="hell" data-i18n="diff.hell">地狱</button></div></div>
-      <div class="row2">
-        <div class="opt"><div class="lab" data-i18n="menu.timeOfDay">时间</div><div class="seg" data-k="tod"><button data-v="day" data-i18n="tod.day">白天</button><button data-v="dusk" data-i18n="tod.dusk">黄昏</button></div></div>
-        <div class="opt"><div class="lab" data-i18n="menu.quality">画质</div><div class="seg" data-k="quality"><button data-v="low" data-i18n="quality.low">流畅</button><button data-v="medium" data-i18n="quality.medium">均衡</button><button data-v="high" data-i18n="quality.high">极致</button></div></div>
-      </div>
-      <div class="row3">
-        <div class="opt"><div class="lab" data-i18n="menu.sensitivity">灵敏度</div><div class="slider" data-k="sens"><input type="range" min="0.2" max="3" step="0.05"><span></span></div></div>
-        <div class="opt"><div class="lab" data-i18n="menu.fov">视野 FOV</div><div class="slider" data-k="fov"><input type="range" min="65" max="100" step="1"><span></span></div></div>
-        <div class="opt"><div class="lab" data-i18n="menu.volume">音量</div><div class="slider" data-k="vol"><input type="range" min="0" max="1" step="0.05"><span></span></div></div>
-      </div>
-      <div class="opt"><div class="lab" data-i18n="settings.language">语言</div><div class="seg langSeg" id="langSeg"><button data-v="auto" data-i18n="settings.languageAuto">自动</button><button data-v="zh" data-i18n="settings.languageZh">简体中文</button><button data-v="en" data-i18n="settings.languageEn">English</button></div></div>
-      <div class="opt" id="profileBox">
-        <div class="lab" data-i18n="menu.profile">军衔档案</div>
-        <div id="rankRow"><span id="rankName"></span><span id="rankLevel"></span><div class="rankBar"><i id="rankFill"></i></div><span id="rankXp"></span></div>
-        <div class="seg" id="presetSeg"></div>
-        <div class="note hidden" id="profileNote" data-i18n="error.storageUnavailable">本地存档不可用，进度仅本次会话有效</div>
-      </div>
+    <footer class="lobbyBottom">
       <button class="go" id="btnStart" data-i18n="menu.start">开 始 游 戏</button>
       <div class="note" data-i18n="menu.lockNote">点击开始后鼠标将被锁定，按 Esc 暂停。画质切换会重新加载页面。</div>
       <div class="mlinks"><a href="https://github.com/riba2534/claude-opus-5-5-demo" target="_blank" rel="noopener noreferrer" data-i18n="menu.linkGithub">GitHub 源码</a><span>·</span><a href="https://x.com/riba2534" target="_blank" rel="noopener noreferrer" data-i18n="menu.linkX">X @riba2534</a></div>
-    </div>
+    </footer>
   </div>
 </div>
 

@@ -53,11 +53,11 @@ for (const t of targets) {
   }
 }
 
-// 公开页面静态元数据：平台版不得出现原作名称/标志性文案；离线版保留原体验
+// 公开页面静态元数据：平台版不得出现原作名称/标志性文案；离线版保留原地图名称。
 const PAGE_META = {
   offline: {
-    title: '沙漠灰 / 运输船 · 穿越火线 3D',
-    description: '穿越火线经典地图「沙漠灰」与「运输船」网页 3D 复刻：爆破、团队竞技、练习与 AI 对战。',
+    title: '沙漠灰 / 运输船 · 前线行动 3D',
+    description: '前线行动 3D：沙漠灰与运输船双地图，支持爆破、团队竞技、练习及 AI 对战。',
   },
   y8: {
     title: 'Chixia Bazaar & Fog Harbor Quay · Frontline Ops 3D',
@@ -71,6 +71,11 @@ const PAGE_META = {
 
 const OUT_DIR = { offline: 'dist', y8: 'dist/y8', gamemonetize: 'dist/gamemonetize' };
 const ZIP_NAME = { y8: 'y8-package.zip', gamemonetize: 'gamemonetize-package.zip' };
+const FAVICON_FILE = {
+  offline: 'src/assets/studio/infinity-zh-transparent.png',
+  y8: 'src/assets/studio/infinity-en-transparent.png',
+  gamemonetize: 'src/assets/studio/infinity-en-transparent.png',
+};
 
 // 配置包 manifest：如实标记——ID 已配置（mock=false），但真实平台审核/广告未验证、
 // 且平台包仍内嵌未开放的经典地图数据，两者都不允许作为可提交版对外发布。
@@ -169,7 +174,11 @@ for (const target of targets) {
       JSON.stringify(configuredIds[target]).replace(/</g, '\\u003c')
     };</script><script>/*__JS__*/</script>`)
     : tpl;
-  let html = page.replace('/*__CSS__*/', () => css).replace('/*__JS__*/', () => js.replace(/<\/script>/g, '<\\/script>'));
+  const favicon = `data:image/png;base64,${fs.readFileSync(FAVICON_FILE[target]).toString('base64')}`;
+  let html = page
+    .replace('/*__FAVICON__*/', () => favicon)
+    .replace('/*__CSS__*/', () => css)
+    .replace('/*__JS__*/', () => js.replace(/<\/script>/g, '<\\/script>'));
   if (target !== 'offline') {
     const meta = PAGE_META[target];
     html = html

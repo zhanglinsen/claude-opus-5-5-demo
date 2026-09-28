@@ -178,18 +178,61 @@ body.lk #clinks{opacity:.22}
 
 /* ---------- 菜单 ---------- */
 .screen{position:absolute;inset:0;pointer-events:auto;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 30% 40%,rgba(5,10,16,.35),rgba(3,5,8,.82) 75%)}
-.menuBox{width:min(980px,96vw);max-height:94vh;overflow:auto;display:grid;grid-template-columns:1.05fr 1fr;gap:22px;padding:26px 28px;background:linear-gradient(160deg,rgba(14,19,26,.9),rgba(8,10,14,.92));border:1px solid rgba(255,255,255,.1);box-shadow:0 30px 80px rgba(0,0,0,.6)}
-.title .logo{font-family:var(--num);font-size:15px;letter-spacing:6px;color:var(--accent)}
-.title h1{margin:6px 0 2px;font-size:54px;letter-spacing:8px;font-weight:900;line-height:1.05;background:linear-gradient(180deg,#fff,#b9c3cc);-webkit-background-clip:text;background-clip:text;color:transparent}
-.title .en{font-family:var(--num);letter-spacing:5px;color:var(--hudDim);font-size:15px}
-.title p{color:#aab3bb;font-size:13.5px;line-height:1.75;margin:14px 0}
-.keys{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12.5px;color:#c9d0d6;margin-top:10px}
-.keys kbd{font-family:var(--num);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-bottom-width:2px;padding:1px 7px;border-radius:3px;font-size:12px;color:#fff;white-space:nowrap}
+.lobbyScreen{background:linear-gradient(90deg,rgba(3,8,13,.55),rgba(4,10,16,.25) 50%,rgba(3,8,13,.62))}
+.lobby{--lobbyInk:#07121d;--lobbySteel:#13283a;--lobbySlate:#28445b;--lobbyText:#e9eff4;--lobbyAmber:#e4a834;--lobbyBlue:#4aa9c8;width:min(1450px,calc(100vw - 40px));height:min(850px,calc(100dvh - 36px));min-height:0;display:grid;grid-template-rows:76px minmax(0,1fr) 88px;color:var(--lobbyText);background:rgba(7,18,29,.68);border:1px solid rgba(154,190,211,.34);box-shadow:0 24px 90px rgba(0,0,0,.58),inset 0 0 0 1px rgba(0,0,0,.5);overflow:hidden;position:relative}
+.lobby::before{content:"";position:absolute;top:0;left:0;width:34%;height:2px;background:linear-gradient(90deg,var(--lobbyAmber),transparent);pointer-events:none;z-index:2}
+.lobbyTop{min-width:0;display:flex;align-items:center;gap:14px;padding:0 24px;background:linear-gradient(180deg,rgba(19,40,58,.98),rgba(9,22,34,.96));border-bottom:1px solid rgba(154,190,211,.22)}
+.lobbyTop #brandMark{width:55px;height:55px;flex:none;margin:0;object-fit:contain;filter:drop-shadow(0 0 7px rgba(74,169,200,.4))}
+.lobbyBrand{min-width:205px;line-height:1.1}
+.lobbyBrand .logo{font-family:var(--num);font-size:11px;font-weight:700;letter-spacing:3px;color:#b5d1df}
+.lobbyBrand .gameTitle{font-family:var(--num);font-size:23px;font-weight:800;letter-spacing:2px;color:#fff;margin-top:4px}
+.lobbyNav{align-self:stretch;display:flex;align-items:stretch;gap:3px;margin-left:clamp(8px,4vw,70px);min-width:0}
+.lobbyNav .navBtn{position:relative;min-width:105px;padding:8px 18px;background:transparent;border:0;color:#a9bdc9;font-family:var(--num);font-size:15px;font-weight:700;letter-spacing:2px;cursor:pointer;transition:background .15s,color .15s}
+.lobbyNav .navBtn:hover{background:rgba(154,190,211,.1);color:#fff}
+.lobbyNav .navBtn[aria-selected="true"]{background:linear-gradient(180deg,rgba(54,85,106,.32),rgba(19,40,58,.14));color:#fff}
+.lobbyNav .navBtn[aria-selected="true"]::after{content:"";position:absolute;left:15px;right:15px;bottom:0;height:3px;background:var(--lobbyAmber);box-shadow:0 -3px 12px rgba(228,168,52,.3)}
+.lobbyMain{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,375px);min-height:0;overflow:hidden}
+.arena{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;align-items:flex-start;padding:clamp(25px,5vh,56px) clamp(24px,4vw,58px) 32px;background:linear-gradient(90deg,rgba(7,18,29,.79),rgba(7,18,29,.42) 62%,rgba(7,18,29,.16)),linear-gradient(0deg,rgba(7,18,29,.88),transparent 53%);overflow:hidden}
+.arena::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(74,169,200,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(74,169,200,.055) 1px,transparent 1px);background-size:52px 52px;mask-image:linear-gradient(90deg,#000,transparent 85%);pointer-events:none}
+.arena>*{position:relative;z-index:1}
+.arenaOverline{font-family:var(--num);font-size:12px;font-weight:700;letter-spacing:4px;color:var(--lobbyAmber);border-left:3px solid var(--lobbyAmber);padding-left:10px;margin-bottom:10px}
+.arena h1{margin:0;font-size:clamp(46px,5vw,78px);font-weight:900;letter-spacing:5px;line-height:1.08;text-shadow:0 3px 18px rgba(0,0,0,.8)}
+.arena .en{font-family:var(--num);font-size:16px;letter-spacing:5px;color:#bdd3df;margin-top:5px;text-shadow:0 1px 8px #000}
+.arena p{max-width:600px;color:#d0dce3;font-size:13px;line-height:1.75;margin:22px 0;text-shadow:0 1px 4px #07121d;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}
+.arena>.opt{width:min(620px,100%);margin:auto 0 0}
+.arena>.opt .lab{color:#c9d8df;margin-bottom:10px}
+.mapCards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.mapCards button{min-width:0;min-height:82px;text-align:left;padding:12px 16px!important;background:linear-gradient(135deg,rgba(22,46,64,.88),rgba(9,21,32,.9));border-color:rgba(154,190,211,.3)}
+.mapCards button:hover{background:rgba(40,68,91,.92)}
+.mapCards button.on{background:linear-gradient(135deg,rgba(73,69,45,.9),rgba(28,38,41,.94));border-color:var(--lobbyAmber);box-shadow:inset 3px 0 0 var(--lobbyAmber)}
+.mapCards button small{margin-top:7px;font-family:var(--num);letter-spacing:1.3px;color:#b4c3cb}
+.lobbySide{min-height:0;background:linear-gradient(180deg,rgba(12,29,42,.98),rgba(7,18,29,.98));border-left:1px solid rgba(154,190,211,.25);overflow:hidden}
+.lobbyPanel{height:100%;overflow:auto;padding:28px 25px 18px;scrollbar-width:thin;scrollbar-color:#466378 #0a1d2a}
+.lobbyPanel[hidden],.lobby .opt[hidden]{display:none!important}
+.lobbyPanel .opt{margin-bottom:20px}
+.lobbyPanel .lab{font-family:var(--num);font-size:11px;letter-spacing:2px;color:#aebfc9}
+.lobbyPanel .seg button{background:rgba(154,190,211,.055);border-color:rgba(154,190,211,.24);color:#dce6eb}
+.lobbyPanel .seg button:hover{background:rgba(154,190,211,.13)}
+.lobbyPanel .seg button.on{background:rgba(228,168,52,.18);border-color:var(--lobbyAmber);box-shadow:inset 0 -2px 0 var(--lobbyAmber)}
+.lobbyPanel .seg.team button.on[data-v=BL]{background:rgba(224,82,46,.23);border-color:var(--bl);box-shadow:inset 0 -2px 0 var(--bl)}
+.lobbyPanel .seg.team button.on[data-v=GR]{background:rgba(47,143,240,.23);border-color:var(--gr);box-shadow:inset 0 -2px 0 var(--gr)}
+.lobbyPanel .seg button small{font-family:var(--num);font-size:10px}
+.lobbyPanel .row2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.lobbyPanel .row2 .seg button{min-width:42px}
+.lobbyPanel .keys{display:grid;grid-template-columns:minmax(78px,auto) 1fr;gap:8px 12px;font-size:12px;color:#d3e0e6;align-items:center}
+.lobbyPanel .keys kbd{font-family:var(--num);background:rgba(154,190,211,.1);border:1px solid rgba(154,190,211,.3);border-bottom-width:2px;padding:3px 8px;color:#fff;white-space:nowrap}
+.lobbyPanel .note{color:#aabdc8}
+.lobbyBottom{display:flex;align-items:center;gap:20px;min-width:0;padding:0 24px;background:linear-gradient(180deg,rgba(12,29,42,.98),rgba(7,18,29,1));border-top:1px solid rgba(154,190,211,.22)}
+.lobbyBottom .go{order:3;margin:0 0 0 auto;width:min(300px,33vw);min-height:56px;font-family:var(--num);font-size:21px;letter-spacing:5px;clip-path:polygon(0 0,100% 0,94% 100%,0 100%);background:linear-gradient(180deg,#f2c45e,#d99a21)}
+.lobbyBottom .note{order:1;margin:0;max-width:400px;color:#9eb1bd;font-size:11px}
+.lobbyBottom .mlinks{order:2;margin:0;white-space:nowrap}
+.lobby :is(button,a,input):focus-visible{outline:2px solid #fff;outline-offset:3px}
+.lobbyPanel .slider{min-width:0}
+.lobbyPanel .slider input{min-width:0}
 .opt{margin-bottom:11px}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
 .row3 .slider span{width:30px;font-size:12px}
-.opts .seg button{padding:7px 4px}
 .opt .lab{font-size:12px;color:var(--hudDim);letter-spacing:2px;margin-bottom:6px}
 .seg{display:flex;flex-wrap:wrap;gap:6px}
 .seg button{flex:1;min-width:64px;padding:8px 6px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:#dfe4e8;font-size:13px;cursor:pointer;transition:all .12s}
@@ -240,9 +283,9 @@ body.lk #clinks{opacity:.22}
 
 /* ---------- 英文文案弹性（html[lang=en] 由 HUD.applyLocale 维护）：
    放宽字距、允许换行，避免长文案遮挡中央战斗信息 ---------- */
-html[lang="en"] .title .logo{letter-spacing:3px}
-html[lang="en"] .title h1{font-size:44px;letter-spacing:4px}
-html[lang="en"] .title .en{letter-spacing:3px}
+html[lang="en"] .lobbyBrand .logo{letter-spacing:2px}
+html[lang="en"] .arena h1{letter-spacing:2px}
+html[lang="en"] .arena .en{letter-spacing:3px}
 html[lang="en"] .go{letter-spacing:3px;padding-left:10px;padding-right:10px}
 html[lang="en"] .go.sec{letter-spacing:2px}
 html[lang="en"] .pauseBox h2{letter-spacing:3px}
@@ -258,8 +301,6 @@ html[lang="en"] #protect{letter-spacing:1px}
 html[lang="en"] .kf{font-size:13px}
 
 @media (max-width:760px){
-  .menuBox{grid-template-columns:1fr;padding:18px}
-  .title h1{font-size:40px}
   #radarWrap{width:120px;height:120px}
   #feed{width:260px}.kf{font-size:12px}
   .vbox .val{font-size:28px}.vbox{min-width:96px}
@@ -267,7 +308,61 @@ html[lang="en"] .kf{font-size:13px}
   .cards{grid-template-columns:repeat(2,1fr)}
 }
 @media (max-width:760px){
-  html[lang="en"] .title h1{font-size:32px;letter-spacing:2px}
   html[lang="en"] #objHint{max-width:86vw}
   html[lang="en"] #center .small{max-width:88vw}
+}
+@media (max-height:520px) and (orientation:landscape){
+  .lobby{width:calc(100vw - 8px);height:calc(100dvh - 8px);grid-template-rows:45px minmax(0,1fr) 50px}
+  .lobbyTop{gap:7px;padding:0 12px}
+  .lobbyTop #brandMark{width:36px;height:36px}
+  .lobbyBrand{min-width:135px}
+  .lobbyBrand .logo{font-size:9px;letter-spacing:1.5px}
+  .lobbyBrand .gameTitle{font-size:15px;letter-spacing:1px;margin-top:2px}
+  .lobbyNav{margin-left:3px}
+  .lobbyNav .navBtn{min-width:70px;padding:4px 8px;font-size:11px;letter-spacing:1px}
+  .lobbyMain{grid-template-columns:minmax(0,1fr) minmax(295px,39%)}
+  .arena{padding:13px 18px 12px}
+  .arenaOverline{font-size:9px;letter-spacing:2px;margin-bottom:5px}
+  .arena h1{font-size:34px;letter-spacing:2px}
+  .arena .en{font-size:11px;letter-spacing:2px;margin-top:2px}
+  .arena p{display:none}
+  .arena>.opt .lab{margin-bottom:5px}
+  .mapCards{gap:6px}
+  .mapCards button{min-height:50px;padding:6px 9px!important;font-size:11px}
+  .mapCards button small{margin-top:2px;font-size:9px}
+  .lobbyPanel{padding:12px 12px 8px}
+  .lobbyPanel .opt{margin-bottom:10px}
+  .lobbyPanel .lab{font-size:10px;margin-bottom:3px}
+  .lobbyPanel .seg button{font-size:11px;min-width:51px;padding:5px 3px}
+  .lobbyBottom{padding:0 12px}
+  .lobbyBottom .go{width:205px;min-height:37px;font-size:15px;letter-spacing:2px}
+  .lobbyBottom .note{font-size:10px;line-height:1.3}
+  .lobbyBottom .mlinks{display:none}
+}
+@media (max-width:700px) and (orientation:portrait){
+  .lobby{width:calc(100vw - 12px);height:calc(100dvh - 12px);grid-template-rows:auto minmax(0,1fr) 64px}
+  .lobbyTop{flex-wrap:wrap;gap:5px;padding:7px 12px 0}
+  .lobbyTop #brandMark{width:40px;height:40px}
+  .lobbyBrand{min-width:0;flex:1}
+  .lobbyBrand .logo{font-size:10px;letter-spacing:1px}
+  .lobbyBrand .gameTitle{font-size:17px;margin-top:2px}
+  .lobbyNav{order:3;width:100%;margin:0;justify-content:space-between}
+  .lobbyNav .navBtn{min-width:0;flex:1;font-size:11px;padding:9px 2px;letter-spacing:0}
+  .lobbyMain{grid-template-columns:1fr;grid-template-rows:minmax(195px,38%) minmax(0,1fr)}
+  .arena{padding:14px 18px 12px}
+  .arenaOverline{font-size:10px;margin-bottom:5px}
+  .arena h1{font-size:37px;letter-spacing:2px}
+  .arena .en{font-size:11px;margin-top:2px}
+  .arena p{display:none}
+  .mapCards button{min-height:49px;padding:7px 10px!important;font-size:11px}
+  .mapCards button small{margin-top:2px;font-size:9px}
+  .lobbySide{border-left:0;border-top:1px solid rgba(154,190,211,.25)}
+  .lobbyPanel{padding:14px 18px}
+  .lobbyPanel .opt{margin-bottom:13px}
+  .lobbyBottom{padding:0 12px}
+  .lobbyBottom .note,.lobbyBottom .mlinks{display:none}
+  .lobbyBottom .go{width:100%;min-height:45px;margin:0;font-size:17px}
+}
+@media (prefers-reduced-motion:reduce){
+  .lobby .navBtn,.lobby .seg button,.lobby .go{transition:none}
 }

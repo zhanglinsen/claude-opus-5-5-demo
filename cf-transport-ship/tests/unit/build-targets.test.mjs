@@ -116,7 +116,7 @@ test('SDK 主机白名单：平台各归各，离线为空', () => {
 
 // ---------- 语言：平台品牌中立 + 单实例注入 ----------
 
-test('平台覆盖目录不含原作品牌词；离线目录原样保留', () => {
+test('平台覆盖目录不含原作品牌词；双版本菜单使用工作室品牌', () => {
   const branded = withPlatformBranding();
   // 平台构建中离线图元数据键不可达（MAPS 不含这两张图），品牌扫描只覆盖可达键
   const unreachable = (k) => k.startsWith('map.transport-ship.') || k.startsWith('map.desert-grey.');
@@ -128,8 +128,9 @@ test('平台覆盖目录不含原作品牌词；离线目录原样保留', () =>
   }
   assert.equal(branded.en['team.bl.name'], 'Attackers');
   assert.equal(branded.zh['menu.docTitle'], '前线行动 3D');
-  // 离线版不侵入：品牌词与旧文案逐字保留
-  assert.equal(CATALOGS.zh['menu.logo'], 'CROSSFIRE · 团队竞技');
+  // 离线版地图与阵营仍保留原玩法，菜单品牌改为工作室标识
+  assert.equal(CATALOGS.zh['menu.logo'], '无限工作室');
+  assert.equal(branded.en['menu.logo'], 'INFINITY STUDIO');
   assert.equal(CATALOGS.en['team.bl.name'], 'Black List');
   assert.equal(PLATFORM_BRAND_OVERRIDE.zh['menu.docTitle'], '前线行动 3D');
 });
@@ -241,6 +242,14 @@ test('平台包公开页面标题/描述为原创中性文案', () => {
     assert.ok(!/穿越火线|沙漠灰|运输船|CROSSFIRE|CrossFire/i.test(html), `平台页面元数据含原作品牌词：${html}`);
     assert.ok(html.includes('Chixia Bazaar') && html.includes('Fog Harbor Quay'));
   }
+});
+
+test('三个构建的 favicon 使用对应语言的透明工作室原图', () => {
+  const icon = (html) => html.match(/<link rel="icon" type="image\/png" href="(.*?)">/s)?.[1];
+  const zh = `data:image/png;base64,${fs.readFileSync('src/assets/studio/infinity-zh-transparent.png').toString('base64')}`;
+  const en = `data:image/png;base64,${fs.readFileSync('src/assets/studio/infinity-en-transparent.png').toString('base64')}`;
+  assert.equal(icon(fs.readFileSync(OFFLINE, 'utf8')), zh);
+  for (const file of [Y8, GM]) assert.equal(icon(fs.readFileSync(file, 'utf8')), en);
 });
 
 test('平台 ZIP 根目录含 index.html（+README/mock manifest），离线不打包', () => {
