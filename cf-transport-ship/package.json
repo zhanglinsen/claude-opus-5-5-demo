@@ -14,7 +14,8 @@
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:e2e": "node scripts/e2e.mjs",
     "test:e2e:desert": "node scripts/e2e-desert.mjs",
-    "test:e2e:storage": "node scripts/e2e-storage-getter.mjs"
+    "test:e2e:storage": "node scripts/e2e-storage-getter.mjs",
+    "test:e2e:lazy": "node scripts/accept-lazy-start.mjs"
   },
   "dependencies": {
     "esbuild": "^0.28.2",

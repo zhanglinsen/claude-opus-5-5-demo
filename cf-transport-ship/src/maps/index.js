@@ -4,20 +4,15 @@ import { MAPS, NEW_PLAYER_DEFAULT_MAP, TARGET_SET, getMapDescriptor, resolveMapI
 export { MAPS, NEW_PLAYER_DEFAULT_MAP, getMapDescriptor, resolveMapId, inSpawnZone } from './registry.js';
 export { DESERT_LAYOUT } from './desert-grey-layout.js';
 
-// 按编译目标惰性加载构建器（Task 11 / US-05）：__BUILD_TARGET__ 由 esbuild define 注入，
-// minify 时非目标分支被整枝剔除——离线包不含平台图几何代码，反之亦然。
-// 离线版只保留旧 desert-grey / transport-ship 构建器；平台版只用原创图构建器。
-export async function getMapBuilders() {
+// 点击出击后只执行所选地图的构建器；包仍是离线单文件，但不在开局时
+// 同时初始化另一张地图模块。编译目标分支保持原有隔离。
+export async function getMapBuilder(id) {
   if (TARGET_SET === 'platform') {
-    const [{ buildPlatformDesert }, { buildPlatformHarbor }] = await Promise.all([
-      import('./platform-desert/build.js'),
-      import('./platform-harbor/index.js'),
-    ]);
-    return { 'platform-desert': buildPlatformDesert, 'platform-harbor': buildPlatformHarbor };
+    if (id === 'platform-desert') return (await import('./platform-desert/build.js')).buildPlatformDesert;
+    if (id === 'platform-harbor') return (await import('./platform-harbor/index.js')).buildPlatformHarbor;
+    return null;
   }
-  const [{ buildMap }, { buildDesertGrey }] = await Promise.all([
-    import('../map.js'),
-    import('./desert-grey.js'),
-  ]);
-  return { 'transport-ship': buildMap, 'desert-grey': buildDesertGrey };
+  if (id === 'transport-ship') return (await import('../map.js')).buildMap;
+  if (id === 'desert-grey') return (await import('./desert-grey.js')).buildDesertGrey;
+  return null;
 }

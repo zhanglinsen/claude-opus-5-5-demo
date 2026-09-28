@@ -349,6 +349,7 @@ export class HUD {
   // 菜单/加载页文案与小地图参数随地图切换（名称/简介经稳定键翻译，语言切换时整条重跑）
   setMapInfo(desc) {
     this.mapDesc = desc;
+    this.el.lobby.dataset.map = desc.id;
     const name = this.mapName(desc);
     document.title = `${name} · ${this.t('menu.docTitle')}`;
     this.el.mapTitle.textContent = name;
@@ -861,7 +862,7 @@ const TEMPLATE = `
 <div id="loading" class="screen"><div class="t" id="loadTitle">运 输 船</div><div class="s" id="loadTxt" data-i18n="common.loading">LOADING</div><div class="bar"><i id="loadBar"></i></div><div class="tip" data-i18n="load.tip">小提示：蹲下再跳（蹲跳）可以跳得更高，踩着木箱就能爬上对面集装箱的二楼。</div></div>
 
 <div id="menu" class="screen lobbyScreen hidden">
-  <div class="lobby">
+  <div class="lobby" id="lobby">
     <header class="lobbyTop">
       <img id="brandMark" class="hidden" alt="" draggable="false">
       <div class="lobbyBrand">
@@ -881,6 +882,7 @@ const TEMPLATE = `
         <h1 id="mapTitle">运输船</h1>
         <div class="en" id="mapEn">TRANSPORT SHIP</div>
         <p id="mapBlurb"></p>
+        <p id="menuError" class="hidden" role="alert"></p>
         <div class="opt"><div class="lab" data-i18n="menu.map">地图</div><div class="seg mapCards" data-k="map" id="mapSeg"></div></div>
       </section>
       <aside class="lobbySide">

@@ -76,6 +76,13 @@ const FAVICON_FILE = {
   y8: 'src/assets/studio/infinity-en-transparent.png',
   gamemonetize: 'src/assets/studio/infinity-en-transparent.png',
 };
+// 小尺寸场景截图仅用于静态大厅背景：按目标内联各自的两张图，避免
+// 首屏创建 WebGL，也避免平台包带入离线经典地图影像。
+const MENU_PREVIEWS = {
+  offline: ['desert-grey', 'transport-ship'],
+  y8: ['platform-desert', 'platform-harbor'],
+  gamemonetize: ['platform-desert', 'platform-harbor'],
+};
 
 // 配置包 manifest：如实标记——ID 已配置（mock=false），但真实平台审核/广告未验证、
 // 且平台包仍内嵌未开放的经典地图数据，两者都不允许作为可提交版对外发布。
@@ -175,9 +182,13 @@ for (const target of targets) {
     };</script><script>/*__JS__*/</script>`)
     : tpl;
   const favicon = `data:image/png;base64,${fs.readFileSync(FAVICON_FILE[target]).toString('base64')}`;
+  const menuPreviews = MENU_PREVIEWS[target].map((id) => {
+    const encoded = fs.readFileSync(`src/assets/menu/${id}.jpg`).toString('base64');
+    return `.lobby[data-map="${id}"]{--arena-image:url(data:image/jpeg;base64,${encoded})}`;
+  }).join('\n');
   let html = page
     .replace('/*__FAVICON__*/', () => favicon)
-    .replace('/*__CSS__*/', () => css)
+    .replace('/*__CSS__*/', () => `${css}\n${menuPreviews}`)
     .replace('/*__JS__*/', () => js.replace(/<\/script>/g, '<\\/script>'));
   if (target !== 'offline') {
     const meta = PAGE_META[target];

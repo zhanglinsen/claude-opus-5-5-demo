@@ -124,8 +124,13 @@ async function runLobbyChecks(page, { tag }) {
   await page.waitForTimeout(60);
   ok(`${tag}: Home 回到作战`, await page.$eval('[data-tab="battle"]', (el) => el.getAttribute('aria-selected') === 'true'));
 
-  // 5. 地图/模式选择仍可操作：切到沙漠灰（页面按现有逻辑重载），模式随图默认
+  // 5. 首次切图在大厅即时更新，不创建地图/重载；设置仍经显式刷新持久化
+  await page.evaluate(() => { window.__lobbySamePage = true; });
+  await page.click('#mapSeg button[data-v=transport-ship]');
+  ok(`${tag}: 首次切图不重载或建图`, await page.evaluate(() => window.__lobbySamePage === true && window.__game.mapDesc.id === 'transport-ship' && !window.__game.renderer));
   await page.click('#mapSeg button[data-v=desert-grey]');
+  ok(`${tag}: 切回沙漠灰预览即时更新`, await page.evaluate(() => window.__lobbySamePage === true && window.__game.mapDesc.id === 'desert-grey' && !window.__game.renderer));
+  await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('#menu:not(.hidden)', { timeout: 60000 });
   await page.waitForFunction(() => window.__game, null, { timeout: 60000 });
   ok(`${tag}: 沙漠灰选中`, await page.$eval('#mapSeg button[data-v=desert-grey]', (b) => b.classList.contains('on') && !b.disabled));

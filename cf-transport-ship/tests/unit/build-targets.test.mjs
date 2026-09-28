@@ -252,6 +252,25 @@ test('三个构建的 favicon 使用对应语言的透明工作室原图', () =>
   for (const file of [Y8, GM]) assert.equal(icon(fs.readFileSync(file, 'utf8')), en);
 });
 
+test('静态大厅预览图按目标隔离，平台包不含经典地图预览', () => {
+  const previews = {
+    offline: ['desert-grey', 'transport-ship'],
+    y8: ['platform-desert', 'platform-harbor'],
+    gamemonetize: ['platform-desert', 'platform-harbor'],
+  };
+  const files = { offline: OFFLINE, y8: Y8, gamemonetize: GM };
+  for (const [target, file] of Object.entries(files)) {
+    const html = fs.readFileSync(file, 'utf8');
+    for (const id of previews[target]) {
+      const encoded = fs.readFileSync(`src/assets/menu/${id}.jpg`).toString('base64');
+      assert.ok(html.includes(`.lobby[data-map="${id}"]{--arena-image:url(data:image/jpeg;base64,${encoded})}`), `${target} 缺 ${id} 预览`);
+    }
+    for (const other of Object.keys(previews).filter((x) => x !== target && (x === 'offline' || target === 'offline'))) {
+      for (const id of previews[other]) assert.ok(!html.includes(`.lobby[data-map="${id}"]`), `${target} 混入 ${id}`);
+    }
+  }
+});
+
 test('平台 ZIP 根目录含 index.html（+README/mock manifest），离线不打包', () => {
   for (const [zipPath, name] of [['dist/y8/y8-package.zip', 'y8-package.zip'], ['dist/gamemonetize/gamemonetize-package.zip', 'gamemonetize-package.zip']]) {
     assert.ok(fs.existsSync(zipPath), `缺少 ${zipPath}`);

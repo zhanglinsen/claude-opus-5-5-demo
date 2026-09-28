@@ -98,6 +98,10 @@ export class Game {
     this.platform = null;      // Task 11 接线：installPlatform 句柄（主控注入；离线可为 null）
     this.adPaused = false;     // 广告暂停原因（独立于玩家暂停 this.paused，成对 enter/exit）
     this.qs = new URLSearchParams(location.search);
+    this.worldReady = false;
+    this._worldPromise = null;
+    this._startPromise = null;
+    this._loopRunning = false;
   }
   // ================= 本地化（Task 10 / US-02） =================
   // 注入点（Task 11 接线契约）：主控创建 createGameLocale()（src/i18n/index.js）后，
@@ -121,10 +125,11 @@ export class Game {
   // AdSession controls（主控经 installPlatform({ controls }) 注入）：
   // 广告暂停是独立原因，与玩家暂停（pause 菜单）合并判定，退出后恢复玩家此前状态。
   isUserPaused() { return !!this.paused; }
-  enterAdPause() { this.adPaused = true; }
+  enterAdPause() { this.adPaused = true; this.stopLoop(); }
   exitAdPause(wasUserPaused) {
     this.adPaused = false;
     // 玩家此前已暂停（wasUserPaused）时保持其暂停：广告期间未改动 paused/HUD 状态，无需恢复动作
+    if (this.playing && !this.paused) this.startLoop();
   }
   // 缺键回退：目录未覆盖的键返回 fallback（避免把键名本身渲染给玩家）
   tf(key, params, fallback) {
@@ -157,6 +162,32 @@ export class Game {
       service: createProfileService({ storage: acquireStorage(), legacyPrimary: this.opts.primary }),
     });
     this.hud.setMapInfo(this.mapDesc);
+    this.hud.show('menu');
+    const canvas = document.getElementById('c');
+    canvas.style.visibility = 'hidden';
+    // 异步建图后浏览器可能已结束按钮点击的用户激活；玩家点画面可重试锁鼠标。
+    canvas.addEventListener('click', () => {
+      if (this.playing && !this.paused && !this.locked && !this.touchMode) this.lock();
+    });
+    document.addEventListener('pointerlockchange', () => this.onLockChange());
+    this.touch = new TouchControls(this);
+    this.touchMode = this.touch.enabled;
+    this.loop = this.loop.bind(this);
+    window.__game = this;
+    if (this.qs.has('autostart')) setTimeout(() => this.startMatch(), 300);
+  }
+  // 大厅只装配本地设置/档案/地图元数据；纹理、WebGL、几何、环境、导航
+  // 以及逐帧渲染只在玩家点击出击后创建。同一场景后续重开复用已加载资源。
+  async prepareWorld() {
+    if (this.worldReady) return;
+    if (this._worldPromise) return this._worldPromise;
+    this._worldPromise = this.loadWorld()
+      .then(() => { this.worldReady = true; })
+      .finally(() => { this._worldPromise = null; });
+    return this._worldPromise;
+  }
+  async loadWorld() {
+    const mapId = this.mapDesc.id;
     this.hud.show('loading');
     this.hud.loading(0.05, this.t('load.step.renderer'));
     await nextFrame();
@@ -168,9 +199,9 @@ export class Game {
     this.hud.loading(0.55, this.tf(mapDisplayKeys(mapId).loading, null, this.mapDesc.loadingLabel));
     await nextFrame();
     this.world = new World();
-    const { getMapBuilders } = await import('./maps/index.js'); // 惰性加载：仅真正建图时才触及纹理资产
-    const MAP_BUILDERS = await getMapBuilders(); // 按编译目标返回本目标集的构建器
-    this.map = (MAP_BUILDERS[mapId] || MAP_BUILDERS[firstAvailableMapId()])(this.renderer.scene, this.T, this.world);
+    const { getMapBuilder } = await import('./maps/index.js'); // 惰性加载：只执行当前图构建器
+    const build = await getMapBuilder(mapId) || await getMapBuilder(firstAvailableMapId());
+    this.map = build(this.renderer.scene, this.T, this.world);
     this.hud.loading(0.68, this.t(this.mapDesc.env?.ocean === false ? 'load.step.envSky' : 'load.step.envOcean'));
     await nextFrame();
     // 环境配置来自地图描述；阴影体积缺省时由可玩边界推导（运输船在注册表里显式给出以保留船体效果）
@@ -203,15 +234,6 @@ export class Game {
     try { this.renderer.renderer.compile(this.renderer.scene, this.renderer.camera); } catch (e) { /* 忽略 */ }
     this.hud.loading(1, this.t('load.step.done'));
     await nextFrame();
-    this.hud.show('menu');
-    document.addEventListener('pointerlockchange', () => this.onLockChange());
-    this.touch = new TouchControls(this);
-    this.touchMode = this.touch.enabled;
-    this.last = performance.now();
-    this.loop = this.loop.bind(this);
-    requestAnimationFrame(this.loop);
-    if (this.qs.has('autostart')) setTimeout(() => this.startMatch(), 300);
-    window.__game = this;
   }
   lampLights() {
     // 地图提供的少量真实点光源（隧道/管道内）
@@ -386,6 +408,24 @@ export class Game {
 
   // ================= 流程 =================
   startMatch() {
+    if (this._startPromise) return this._startPromise;
+    if (!this.worldReady) {
+      this._startPromise = this.prepareWorld()
+        .then(() => this.startMatchReady())
+        .catch((e) => {
+          console.error(e);
+          const message = e && e.message ? e.message : String(e);
+          this.hud.el.menuError.textContent = this.t('load.fail', { msg: message });
+          this.hud.el.menuError.classList.remove('hidden');
+          this.hud.el.btnStart.disabled = true;
+          this.hud.show('menu');
+        })
+        .finally(() => { this._startPromise = null; });
+      return this._startPromise;
+    }
+    return this.startMatchReady();
+  }
+  startMatchReady() {
     const o = this.opts;
     // 模式解析：URL ?mode= 优先（菜单模式选择 UI 属 HUD lane），其余走地图默认；
     // 请求模式必须是该图 supportedModes 之一，否则回退默认
@@ -464,6 +504,8 @@ export class Game {
     }
     this.playing = true; this.paused = false; this.ended = false;
     this.hud.show(null);
+    document.getElementById('c').style.visibility = 'visible';
+    this.startLoop();
     this.lock();
     setTimeout(() => audio.announce('Go go go!'), 400);
     this.hud.toast(this.mode.toast(this.goal, (k, p) => this.t(k, p)), 3.5);
@@ -531,13 +573,16 @@ export class Game {
   pause() {
     this.paused = true; this.hud.show('pause');
     this.hud.scoreboard(false);
+    this.stopLoop();
   }
   resume(fromLock) {
     this.paused = false; this.hud.show(null);
+    this.startLoop();
     if (!fromLock) this.lock();
   }
   quitToMenu() {
     this.playing = false; this.paused = false; this.ended = true;
+    this.stopLoop();
     this.endBombSession();
     this.destroyPractice();
     this.clearSmokes();
@@ -555,6 +600,7 @@ export class Game {
     this.player = null;
     this.vm.setVisible(false);
     if (document.pointerLockElement) document.exitPointerLock();
+    document.getElementById('c').style.visibility = 'hidden';
     this.hud.show('menu');
     this.requestPlatformAd('menu-return'); // 自然断点：返回菜单（非交战中/回合间）
   }
@@ -592,8 +638,16 @@ export class Game {
     if (k === 'vol') audio.setVolumes({ master: v });
     if (k === 'fov' && this.renderer) { this.renderer.camera.fov = v; this.renderer.camera.updateProjectionMatrix(); }
     if (k === 'tod' && this.env) this.env.apply(v);
-    if (k === 'quality') { this.hud.saveOpts(); location.reload(); }
-    if (k === 'map') { this.hud.saveOpts(); location.reload(); }
+    if (k === 'quality' && this.worldReady) { this.hud.saveOpts(); location.reload(); }
+    if (k === 'map') {
+      this.hud.saveOpts();
+      if (this.worldReady) location.reload();
+      else {
+        this.mapDesc = getMapDescriptor(v);
+        this.hud.setMapInfo(this.mapDesc);
+        this.hud.syncControls();
+      }
+    }
     if (k === 'team' && this.vm) this.vm.setTeam(v);
   }
   endMatch() {
@@ -606,6 +660,7 @@ export class Game {
     audio.announce(win ? 'Mission accomplished' : win === null ? 'Draw' : 'Mission failed');
     if (document.pointerLockElement) document.exitPointerLock();
     this.vm.setVisible(false);
+    this.stopLoop();
     this.requestPlatformAd('match-end'); // 自然断点：整场结束（对局已收口，非回合间）
   }
 
@@ -1014,22 +1069,27 @@ export class Game {
   onGrenadeStart(a) { if (a.isPlayer) { this.vm.throwNade(); audio.playGrenadePin(); } }
 
   // ================= 主循环 =================
+  startLoop() {
+    if (this._loopRunning || !this.renderer) return;
+    this._loopRunning = true;
+    this.last = performance.now();
+    this._raf = requestAnimationFrame(this.loop);
+  }
+  stopLoop() {
+    this._loopRunning = false;
+    if (this._raf != null) cancelAnimationFrame(this._raf);
+    this._raf = null;
+  }
   loop(now) {
-    requestAnimationFrame(this.loop);
+    if (!this._loopRunning) return;
+    this._raf = requestAnimationFrame(this.loop);
     let dt = (now - this.last) / 1000; this.last = now;
     if (dt > 0.1) dt = 0.1;
     if (dt <= 0) return;
-    const R = this.renderer, cam = R.camera;
+    const R = this.renderer;
     this.realTime = (this.realTime || 0) + dt;
     const active = this.playing && !this.paused && !this.adPaused; // 广告期间冻结模拟（输入已锁）
     if (active) this.simulate(dt);
-    else if (!this.playing) {
-      // 菜单：环绕镜头（参数来自地图描述）
-      const O = this.mapDesc.menu.orbit, t = this.realTime * O.speed;
-      cam.position.set(Math.cos(t) * O.r + O.rOff, O.y + Math.sin(t * 2.1) * O.yAmp, Math.sin(t) * O.zR);
-      cam.lookAt(O.look[0], O.look[1], O.look[2]);
-      cam.fov = O.fov; cam.updateProjectionMatrix();
-    }
     this.renderFrame(dt);
   }
   // 调试：无渲染快进
