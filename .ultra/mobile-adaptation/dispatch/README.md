@@ -31,7 +31,7 @@
 ## GLM 容量与账号
 - 实测（2026-09-30 01:03）：可用额度 `bigmodel-3` GLM-5.3-Flash 补偿包 95.4M；`bigmodel-2` GLM-5.3 旗舰 2.49M。到期：旗舰 2026-09-30 23:59:59，Flash 补偿包 2026-10-01 00:00（北京时间）。
 - 模型选择：实现类 lane 用 `glm-5.3-flash --effort high`；独立审核用**新上下文** `glm-5.3-flash --effort max`（只读）；旗舰 `glm-5.3` 只留给最终独立审核这类高价值、低 token 的环节。账号路由由本机 `zcode-kit` 代理自动完成，不手动切账号，不使用 `--show-key`。
-- **GLM 判定空闲**：`python3 .ultra/mobile-adaptation/dispatch/poll.py` 输出“GLM 空闲”（所有账号最近使用距今 ≥180 秒）。
+- **GLM 判定空闲**：`python3 -B .ultra/mobile-adaptation/dispatch/poll.py` 输出“GLM 空闲”。判据是**代理请求计数器**在 10 秒内不增长 + 长窗口速率稀疏 + market-lab 没有进程在跑。（2026-09-30 修正：原先用 `zcode-kit accounts health` 的 `used Ns ago`，实测它是代理后台定期探测活跃账号刷新出来的，永远不超过约 30 秒，不是有效信号，导致我此前几次“忙”的判定不可靠。）
 - **并发上限 3**（历史上第 4 个并发会话出现过 429）。遇到 429 不要高频重试，等下一次轮询。
 - **不抢占别人**：判定“忙”时不启动 GLM lane；已在运行的 lane 不受影响。
 

@@ -1,7 +1,16 @@
-"""只读轮询：GLM 是否空闲、各 lane 的运行/完成情况。不写文件、不启动任何进程（zcode-kit 只调用只读子命令）。
+"""只读轮询：GLM 是否空闲、各 lane 的运行/完成情况。除了在 /private/tmp/cf-mobile-run 写一个小状态文件外，
+不写任何文件、不启动进程（zcode-kit 只调用只读子命令）。
 
-用法：python3 .ultra/mobile-adaptation/dispatch/poll.py
-判定 GLM 空闲：所有账号最近一次使用距今 >= IDLE_SECONDS（默认 180 秒）。
+用法：python3 -B .ultra/mobile-adaptation/dispatch/poll.py
+
+判定 GLM 空闲（三个条件同时满足）：
+  1. 代理请求计数器在 SAMPLE_SECONDS 秒内没有增长（实时流量为 0）；
+  2. 自上次轮询以来的请求速率 <= MAX_RATE_PER_10MIN（长窗口内也是稀疏的）；
+  3. 没有 market-lab 的 GLM 工作树进程在跑（其它项目的 lane 正在使用代理）。
+
+为什么不用 `zcode-kit accounts health` 的 “used Ns ago”：它是代理后台定期探测活跃账号刷新出来的，
+永远不超过约 30 秒（实测在计数器完全不动时仍恒为 23–29 秒），不是有效的空闲信号。
+我方自己的 lane 也会产生请求，所以有 lane 运行时“速率”条件只作参考，不据此阻止启动，并发上限仍是 3。
 """
 import glob
 import json
@@ -10,27 +19,33 @@ import re
 import subprocess
 import time
 
-IDLE_SECONDS = 180
+SAMPLE_SECONDS = 10
+MAX_RATE_PER_10MIN = 6
 RUN_DIR = '/private/tmp/cf-mobile-run'
-UNIT = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
+STATE = os.path.join(RUN_DIR, 'poll-state.json')
 
 
-def accounts_health():
+def run(cmd, timeout=30):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+
+
+def proxy_counter():
+    """代理日志里最大的 #NNN 请求序号；读不到返回 None。"""
     try:
-        out = subprocess.run(['zcode-kit', 'accounts', 'health'], capture_output=True, text=True, timeout=30).stdout
-    except Exception as exc:  # 工具缺失或超时：无法判断，按忙处理
-        return None, f'无法读取 zcode-kit accounts health：{exc}'
-    accounts = []
-    for line in out.splitlines():
-        m = re.match(r'^\s*\*?\s*(\S+)\s+(\S+)\s+(\S+)\s+(.*)$', line)
-        if not m or not m.group(1).startswith(('bigmodel-', 'zai-')):
-            continue
-        used = re.search(r'used (\d+)([smhd]) ago', line)
-        never = 'never used' in line
-        age = int(used.group(1)) * UNIT[used.group(2)] if used else None
-        accounts.append({'id': m.group(1), 'quota': m.group(2), 'state': m.group(3),
-                         'used_ago_s': age, 'never': never, 'active': line.lstrip().startswith('*')})
-    return accounts, None
+        nums = [int(n) for n in re.findall(r'^#(\d+)', run(['zcode-kit', 'proxy', 'logs', '80']), re.M)]
+        return max(nums) if nums else None
+    except Exception:
+        return None
+
+
+def other_projects_running():
+    """其它项目（market-lab）的 GLM 工作树里有进程在跑。"""
+    try:
+        out = run(['ps', '-Ao', 'pid,etime,command'])
+    except Exception:
+        return None
+    hits = [line.strip()[:110] for line in out.splitlines() if 'market-lab' in line and 'grep' not in line]
+    return hits
 
 
 def lane_runs():
@@ -55,19 +70,63 @@ def lane_runs():
     return runs
 
 
+def load_state():
+    try:
+        with open(STATE, encoding='utf-8') as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def save_state(counter):
+    try:
+        os.makedirs(RUN_DIR, exist_ok=True)
+        with open(STATE, 'w', encoding='utf-8') as fh:
+            json.dump({'counter': counter, 'time': time.time()}, fh)
+    except OSError:
+        pass
+
+
 def main():
-    accounts, err = accounts_health()
-    print('== GLM')
-    if accounts is None:
-        print('  未知（' + err + '）→ 按忙处理')
+    print('== GLM（代理请求计数器 + 其它项目进程）')
+    c0 = proxy_counter()
+    reasons = []
+    idle = True
+    if c0 is None:
+        print('  无法读取代理计数器 → 按忙处理')
         idle = False
     else:
-        ages = [a['used_ago_s'] for a in accounts if a['used_ago_s'] is not None]
-        idle = bool(ages) and min(ages) >= IDLE_SECONDS
-        for a in accounts:
-            when = '从未使用' if a['never'] else f"{a['used_ago_s']}s 前使用"
-            print(f"  {a['id']:<11} {a['state']:<8} {when}{'  (active)' if a['active'] else ''}")
-        print(f"  判定：{'空闲' if idle else '忙'}（阈值 {IDLE_SECONDS}s；最近使用 {min(ages) if ages else '?'}s 前）")
+        time.sleep(SAMPLE_SECONDS)
+        c1 = proxy_counter()
+        live = (c1 - c0) if c1 is not None else None
+        print(f'  代理计数器 #{c0} → #{c1}（{SAMPLE_SECONDS}s 内 +{live}）')
+        if live is None or live > 0:
+            idle = False
+            reasons.append(f'实时有流量（{SAMPLE_SECONDS}s 内 +{live}）')
+        prev = load_state()
+        if prev and c1 is not None and c1 >= prev['counter']:
+            minutes = max((time.time() - prev['time']) / 60.0, 0.1)
+            rate = (c1 - prev['counter']) / minutes * 10
+            print(f'  自上次轮询（{minutes:.1f} 分钟前，#{prev["counter"]}）以来：约 {rate:.1f} 个请求/10 分钟')
+            if rate > MAX_RATE_PER_10MIN:
+                reasons.append(f'长窗口速率偏高（{rate:.1f}/10 分钟，阈值 {MAX_RATE_PER_10MIN}）')
+        if c1 is not None:
+            save_state(c1)
+    others = other_projects_running()
+    if others is None:
+        print('  无法读取进程表 → 按忙处理')
+        idle = False
+    elif others:
+        print(f'  market-lab 进程 {len(others)} 个在跑：')
+        for line in others[:3]:
+            print(f'    {line}')
+        idle = False
+        reasons.append('market-lab 的 lane 在跑')
+    else:
+        print('  market-lab：无进程')
+    if reasons:
+        idle = False
+
     print('== 我的 lane 运行')
     runs = lane_runs()
     if not runs:
@@ -76,7 +135,9 @@ def main():
         state = '已结束 ' + r['detail'] if r['finished'] else f"运行中（日志 {r['log_age_s']}s 未更新）"
         print(f"  {r['lane']:<8} {state}")
     running = sum(1 for r in runs if not r['finished'] and r['log_age_s'] < 900)
-    print(f"== 结论：GLM {'空闲' if idle else '忙'}；我方运行中 lane {running} 个；可再启动 {max(0, 3 - running) if idle else 0} 个")
+    verdict = '空闲' if idle else '忙'
+    print(f"== 结论：GLM {verdict}{'（' + '；'.join(reasons) + '）' if reasons else ''}；我方运行中 lane {running} 个；"
+          f"可再启动 {max(0, 3 - running) if idle else 0} 个")
 
 
 if __name__ == '__main__':
