@@ -51,6 +51,9 @@ const WAVES = [
   [0.25, 1.0, 0.07, 11], [-0.5, 0.8, 0.05, 6.5], [0.95, -0.1, 0.05, 4.2],
 ];
 
+// 不透明队列中最后绘制海面与天空；场景中其余不透明物体的 renderOrder 均小于这两个值
+export const OCEAN_RENDER_ORDER = 999, SKY_RENDER_ORDER = 1000;
+
 function makeOcean(preset) {
   // 极坐标网格：中心密、远处疏
   const rings = 110, segs = 160, pos = [], idx = [];
@@ -179,7 +182,9 @@ function makeOcean(preset) {
   const mesh = new THREE.Mesh(g, mat);
   mesh.position.y = SEA_Y;
   mesh.frustumCulled = false;
-  mesh.renderOrder = -1;
+  // 在其他不透明物体之后、天空之前绘制：被甲板/船体遮挡的水面由深度测试提前剔除，
+  // 不再先跑一遍昂贵的海面着色再被覆盖（画面逐像素不变，见 performance-20260930-gpu-analysis）
+  mesh.renderOrder = OCEAN_RENDER_ORDER;
   return mesh;
 }
 
@@ -230,7 +235,9 @@ export class Environment {
     this.preset = PRESETS.day;
     this.sky = new Sky(); this.sky.scale.setScalar(40000);
     this.sky.material.depthWrite = false;
-    this.sky.renderOrder = -3;
+    // 天空最后绘制（仍在透明物体之前）：只着色未被任何不透明物体覆盖的像素。
+    // 天空半径 40000 < 相机远裁剪 60000，深度测试只放行空白像素，结果与先画天空一致。
+    this.sky.renderOrder = SKY_RENDER_ORDER;
     // 天空 HDR 增益：Sky 输出的是物理辐亮度；沙漠档用 skyGain 把可见天空压回
     // 蓝色观感。E 波 bloom 阈值根治（render.js threshold 3.2→8）后从保守值 0.25 回调到
     // 0.5（dusk 0.45）：天空不再依赖低增益压 bloom，与过曝安全保持平衡。
