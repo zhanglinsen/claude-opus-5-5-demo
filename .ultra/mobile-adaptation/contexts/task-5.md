@@ -39,4 +39,8 @@ Accepted gaps: G-01
 2026-09-30 创建。来源：规格评估 E4；`audio.js:238-243` 的兜底心跳发现。
 
 ## Completion
-未完成。
+完成于 2026-09-30，提交 `97ca674`。
+- 证据：`lifecycle-module` 12 项 + `touch-lifecycle` 端到端通过；`ad-session` 与 `touch-i18n` 等兼容契约测试全绿。
+- 实现：`visibilitychange(hidden)` 与 `pagehide` → 清输入、`requestPause('lifecycle')`（守卫内置，不覆盖广告暂停）、显式 `audio.ctx.suspend()`（`ctx` 已 suspended/closed 时不重复）；恢复只在首个 `touchstart` 手势里调用 `audio.init()`（一次性、`capture`）；不自动“继续”。**未改 `audio.js`/`game.js`**。
+- 与计划的偏差：`interrupt()` 里显式 `resetTouchState()` 与 `requestPause` 内部的清状态会重复一次（“确实暂停了”的路径上清两次），无害；显式那次是给“广告暂停/已暂停”路径用的。
+- 未验证：iOS 来电/`interrupted` 状态下 `audio.init()` → `_resume()` 的真实表现（代码已处理 `interrupted`，但只读码未真机确认）。

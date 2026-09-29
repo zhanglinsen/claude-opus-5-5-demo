@@ -38,4 +38,8 @@ Accepted gaps: G-01
 2026-09-30 创建。来源：规格 US-M04；决策 D3 待用户确认。
 
 ## Completion
-未完成。
+完成于 2026-09-30，提交 `97ca674`。
+- 证据：`orientation-module` 10 项、`fullscreen-module` 8 项、`touch-lifecycle` 端到端通过。
+- **超出计划的一处修复**：原设计只靠 `matchMedia` 的 change 事件，会漏掉“竖屏的大厅里直接点开始”（方向没变，没有 change 事件，对局会在竖屏里开始）。加了竖屏期间 2Hz 轮询 `game.playing`，回到横屏即停，不改 `game.js`；有对应测试。
+- 修了一处违反契约的 CSS：遮罩规则里我曾写了 `touch-action:none`（契约 §6 只允许 `#c`/`#touch`），已去掉。
+- 未验证：`screen.orientation.lock` 与 `requestFullscreen` 在各浏览器的真实行为；遮罩在 iOS Safari 上是否可靠拦截触摸；iPhone 上“添加到主屏幕”文案的准确性。

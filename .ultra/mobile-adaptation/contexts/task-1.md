@@ -39,4 +39,8 @@ Accepted gaps: 无
 2026-09-30 创建。来源：用户“不能影响性能优化任务”；规格 US-M06。
 
 ## Completion
-未完成。
+完成于 2026-09-30，提交 `999725d`（协调者亲自实现，GLM 当时判定为忙——该判定后来发现依据有误，见 `dispatch/README.md`）。
+- 证据：`isolation.test.mjs` 26 项（纯函数 + 临时 git 仓库端到端 + CLI 退出码）与 `desktop-equivalence.test.mjs` 4 项全部通过；`node cf-transport-ship/scripts/check-mobile-isolation.mjs` 对性能基线 `perf-integration-20260929` 检查通过（52 个改动文件全在白名单内，未触碰任何禁区文件）。
+- 灵敏度：在 `touch.js` 早返回之前塞一行 `window.innerWidth`，桌面等价测试变红（报“桌面路径不应访问 window.innerWidth”），已还原。
+- 超出原范围的能力：`--head`（验收 lane 分支）、`--lane`（按契约 §1 检查所有权与 style.css 分区）、catalogs.js 只增 `touch.*` 键、index.html 只允许单个 `<meta>`、现有测试只能新增。
+- 局限：守卫检查的是路径与改动形态，不理解语义；不能替代读 diff。

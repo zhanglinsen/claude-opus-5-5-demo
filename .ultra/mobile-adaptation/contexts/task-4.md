@@ -40,4 +40,8 @@ Accepted gaps: G-01
 2026-09-30 创建。来源：规格评估 E1/E2/E8。
 
 ## Completion
-未完成。
+完成于 2026-09-30，提交 `97ca674`。
+- 证据：`menu-module` 11 项 + `touch-menu` 端到端通过；`touch-i18n / i18n / game-i18n / hud-i18n` 兼容契约测试全绿。
+- 实现：menu ☰（`requestPause`）、记分板（**切换**，开启期间才起 250ms 计时器，暂停/结算自动关，避免恢复后残留 `Tab`）、配装 `KeyB`、检视 `KeyF`、槽位 `Digit1-4`；全部被 `isPlaying()` 守卫。新按钮进 `_labeledExtra`，既有 6 个本地化按钮顺序不变。
+- 读码确认（回答本任务原先的 ⚠️）：`#touch` 在 `#hud` 内部，所以触屏按钮只在对局 HUD 可见时才出现，大厅/结算界面不会露出。
+- 未验证：按钮观感与热区、英文长文案（INSPECT/SCORE）在 44px 圆里是否溢出。

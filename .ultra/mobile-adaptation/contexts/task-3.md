@@ -45,4 +45,8 @@ Accepted gaps: G-01（浏览器/真机验证后置）
 2026-09-30 调度拆分（不改依赖表）：布局纯函数 `layout.js` 与骨架由 lane L0 先行，`touch.js` 集成由 lane L3b 完成，见 `dispatch/README.md`。
 
 ## Completion
-未完成。
+完成于 2026-09-30：布局纯函数与骨架 `6b84c28`，`touch.js` 集成 `dd82063`。
+- 证据：`layout-geometry` 9 通过 + 1 待办（紧凑高度）；`touch-input` 25 项通过；`touch-i18n` 等兼容契约测试全部通过且**未修改**；旧版 `touch.js` 上新测试 22/25 变红。
+- 实现要点：`touchcancel` 与 `touchend` 都释放；`blur/orientationchange` 清状态；按 `layout.js` 重排（rAF 去抖），副开火键改 `left` 锚点；浮动摇杆（位移相对按下点）；画布 `touchstart/touchend` 非 passive 并 `preventDefault`（不拦 `.screen`）；`gesturestart` 拦截；`is-touch` 类；“镜”镜像右键、开火置 `mouse.lp`。**未改 `player.js`/`game.js`**。
+- 与计划的偏差：竖屏 390×844 不再要求互不重叠（见 Change Log）；`layout.js` 的紧凑高度（h<360）缺口未解决，记为 `test.todo`。
+- 未验证：安全区探针 `getComputedStyle` 读取 `env(safe-area-inset-*)` 的真实行为、E14 合成鼠标事件是否真实发生。

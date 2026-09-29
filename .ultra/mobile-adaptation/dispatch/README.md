@@ -35,7 +35,15 @@
 - **并发上限 3**（历史上第 4 个并发会话出现过 429）。遇到 429 不要高频重试，等下一次轮询。
 - **不抢占别人**：判定“忙”时不启动 GLM lane；已在运行的 lane 不受影响。
 
-## 启动一个 GLM lane（以 L1 为例；LANE、路径按需替换）
+## 启动一个 GLM lane
+
+> **2026-09-30 修正（重要）**：不要在 Claude 桌面会话里直接运行下面第 4 步的 `zcode-kit run claude-code …`。子进程会继承会话里的 `ANTHROPIC_BASE_URL`、`CLAUDE_CODE_*`、`HTTP(S)_PROXY`，请求被送去桌面端网关而不是本地 GLM 代理，结果是 `401 Invalid bearer token`（日志里 `apiKeySource: "none"`）。用 `launch-lane.sh`（在干净环境里启动，并含权限白名单）：
+> ```bash
+> bash /private/tmp/cf-mobile-run/launch-lane.sh <lane> <worktree路径> <模型> <effort> <impl|review|smoke>
+> ```
+> 先用 `smoke` 做一句话冒烟确认认证正常。仓库里的 `launch-lane.sh` 是留档。下面的手工步骤仍用于理解，第 4 步以脚本为准。
+
+### 手工步骤（以 L1 为例；LANE、路径按需替换）
 每步都是独立的简单命令，在 plan worktree 根目录执行：
 
 ```bash
