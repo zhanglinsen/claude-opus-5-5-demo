@@ -378,9 +378,23 @@ html[lang="en"] .kf{font-size:13px}
 /* mobile:input:end */
 
 /* mobile:menu:begin 任务 4：新增按钮 */
+/* 顶部栏与槽位条按钮为 44px：字号收小、不换行；较长英文（INSPECT/SCORE）不溢出 */
+html.is-touch #touch .btn[data-act="menu"],
+html.is-touch #touch .btn[data-act="board"],
+html.is-touch #touch .btn[data-act="loadout"],
+html.is-touch #touch .btn[data-act="inspect"],
+html.is-touch #touch .btn[data-act="fullscreen"]{font-size:10px;line-height:1;padding:0;overflow:hidden;white-space:nowrap}
+html.is-touch #touch .btn[data-act="menu"]{font-size:18px}
+html.is-touch #touch .btn[data-act^="slot"]{font-size:16px;font-family:var(--num,inherit);padding:0}
+/* 记分板为切换按钮：开启时高亮 */
+html.is-touch #touch .btn[data-act="board"].on{background:rgba(245,179,33,.35);border-color:var(--accent,#f5b321)}
 /* mobile:menu:end */
 
 /* mobile:orientation:begin 任务 7：横屏遮罩与全屏 */
+/* 竖屏对局遮罩：层级高于暂停界面，拦截触摸；由 orientation.js 创建并显隐 */
+html.is-touch #rotateGuard{position:fixed;inset:0;z-index:1000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;background:rgba(5,7,10,.94);color:#fff;pointer-events:auto}
+html.is-touch #rotateGuard .rg-title{font-size:20px;letter-spacing:1px}
+html.is-touch #rotateGuard .rg-tip{font-size:13px;line-height:1.5;opacity:.7;max-width:22em}
 /* mobile:orientation:end */
 
 /* mobile:hud:begin 任务 8：小屏 HUD 避让 */

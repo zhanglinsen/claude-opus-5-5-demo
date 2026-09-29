@@ -214,11 +214,13 @@ test('用例8：开火按下同时置 mouse.lp（死亡观战切队友只认 mou
 
 // ---------- L3b 契约 API ----------
 
-test('契约：is-touch 类加到 documentElement；既有按钮都带 data-act', () => {
+test('契约：is-touch 类加到 documentElement；既有 10 个按钮都带 data-act', () => {
   const { env, buttons } = setup();
   assert.equal(env.doc.documentElement.classList.contains('is-touch'), true);
-  const acts = buttons().map((b) => b.dataset.act).sort();
-  assert.deepEqual(acts, ['c4', 'crouch', 'e', 'fire', 'fire2', 'g', 'jump', 'reload', 'scope', 'swap']);
+  const acts = buttons().map((b) => b.dataset.act);
+  for (const act of ['c4', 'crouch', 'e', 'fire', 'fire2', 'g', 'jump', 'reload', 'scope', 'swap']) {
+    assert.ok(acts.includes(act), `既有按钮缺少 data-act=${act}`);
+  }
 });
 
 test('契约：requestPause 守卫与状态清零', () => {
@@ -253,14 +255,16 @@ test('契约：addButton 按 layout 定位，labelKey 进 _labeledExtra 而不�
   let prefix = 'X'; const subs = new Set();
   touch.setLocaleService({ t: (k) => `${prefix}:${k}`, subscribe: (fn) => { subs.add(fn); return () => subs.delete(fn); } });
   const before = touch._labeled.length;
-  const b = touch.addButton({ act: 'board', labelKey: 'touch.board', down() {} });
-  assert.equal(b.dataset.act, 'board');
-  assert.equal(b.textContent, 'X:touch.board');
+  const beforeExtra = touch._labeledExtra.length; // 菜单模块已挂接，其本地化按钮已在其中
+  // 用 fullscreen：默认环境不支持全屏，所以没有别的模块占用这个 act
+  const b = touch.addButton({ act: 'fullscreen', labelKey: 'touch.fullscreen', down() {} });
+  assert.equal(b.dataset.act, 'fullscreen');
+  assert.equal(b.textContent, 'X:touch.fullscreen');
   assert.equal(touch._labeled.length, before, '新按钮不得进入 _labeled（touch-i18n 测试对其做完整 deepEqual）');
-  assert.equal(touch._labeledExtra.length, 1);
-  assert.equal(b.style.right, '64px'); assert.equal(b.style.top, '6px'); assert.equal(b.style.width, '44px');
+  assert.equal(touch._labeledExtra.length, beforeExtra + 1);
+  assert.equal(b.style.right, '220px'); assert.equal(b.style.top, '6px'); assert.equal(b.style.width, '44px');
   prefix = 'Y'; for (const fn of subs) fn();
-  assert.equal(b.textContent, 'Y:touch.board');
+  assert.equal(b.textContent, 'Y:touch.fullscreen');
 });
 
 test('契约：addButton 的 down/up/cancel 语义，重复按下不重复触发', () => {

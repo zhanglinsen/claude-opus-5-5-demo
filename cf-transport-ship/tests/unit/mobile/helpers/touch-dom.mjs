@@ -22,11 +22,13 @@ function walk(el, visit) {
  * @param {object} [opts]
  * @param {number} [opts.width=844] @param {number} [opts.height=390]
  * @param {boolean} [opts.coarse=true] @param {object} [opts.gameOver] 覆盖 makeFakeGame 的字段
+ * @param {(env:object)=>void} [opts.prepare] 构造 TouchControls 之前调用
  * @returns 见下方返回对象
  */
-export function makeTouchControls({ width = 844, height = 390, coarse = true, search = '', gameOver = {} } = {}) {
+export function makeTouchControls({ width = 844, height = 390, coarse = true, search = '', gameOver = {}, prepare } = {}) {
   const env = installEnv({ width, height, coarse, search });
   const root = env.register('touch');
+  if (prepare) prepare(env); // 构造 TouchControls 之前的钩子（例如设置 document.fullscreenEnabled）
   const handlers = [];
   const origAdd = env.win.addEventListener.bind(env.win);
   env.win.addEventListener = (type, fn, options) => {
@@ -73,6 +75,7 @@ export function makeTouchControls({ width = 844, height = 390, coarse = true, se
       const y = top != null ? top : env.win.innerHeight - bottom - h;
       return { x, y, w, h };
     },
-    cleanup() { env.restore(); },
+    // 先 destroy（撤销 src/mobile/* 模块：清除轮询定时器与遮罩），再还原全局；否则遗留的 setInterval 会让 node 进程退不出去
+    cleanup() { try { touch.destroy(); } catch (e) { /* 忽略 */ } env.restore(); },
   };
 }
