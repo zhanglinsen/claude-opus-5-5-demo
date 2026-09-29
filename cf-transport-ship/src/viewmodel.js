@@ -19,6 +19,17 @@ const KICK = { ak47: [0.04, 0.07], m4a1: [0.032, 0.05], awm: [0.09, 0.2], mp5: [
 const ease = (t) => t * t * (3 - 2 * t);
 const seg = (f, a, b) => Math.min(1, Math.max(0, (f - a) / (b - a)));
 
+// 后坐弹簧（半隐式欧拉，k=260、d=26）。单步只在 k·h² + 2·d·h < 4（约 h < 1/17 s）时稳定，
+// 低帧率下单步推进会逐帧放大、枪模飞出画面；因此按 ≤1/60 s 的固定子步推进，60 FPS 及以上仍是单步。
+const KICK_K = 260, KICK_D = 26, KICK_MAX_STEP = 1 / 60;
+export function stepKickSpring(s, dt) {
+  const n = Math.max(1, Math.ceil(dt / KICK_MAX_STEP - 1e-9)), h = dt / n;
+  for (let i = 0; i < n; i++) {
+    s.kickV += (-KICK_K * s.kick - KICK_D * s.kickV) * h; s.kick += s.kickV * h;
+    s.kickRotV += (-KICK_K * s.kickRot - KICK_D * s.kickRotV) * h; s.kickRot += s.kickRotV * h;
+  }
+}
+
 export class ViewModel {
   constructor(scene, T, team) {
     this.scene = scene;
@@ -159,9 +170,7 @@ export class ViewModel {
     const id = this.id;
     const hip = HIP[id] || HIP.ak47;
     // 弹簧：后坐
-    const k1 = 260, d1 = 26;
-    this.kickV += (-k1 * this.kick - d1 * this.kickV) * dt; this.kick += this.kickV * dt;
-    this.kickRotV += (-k1 * this.kickRot - d1 * this.kickRotV) * dt; this.kickRot += this.kickRotV * dt;
+    stepKickSpring(this, dt);
     // 鼠标惯性摆动
     const tx = THREE.MathUtils.clamp(-st.lookDX * 0.00055, -0.05, 0.05), ty = THREE.MathUtils.clamp(st.lookDY * 0.00055, -0.04, 0.04);
     this.sway.x += (tx - this.sway.x) * Math.min(1, dt * 9);
