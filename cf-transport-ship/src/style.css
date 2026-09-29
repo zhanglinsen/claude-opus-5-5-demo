@@ -404,6 +404,48 @@ html.is-touch #rotateGuard .rg-tip{font-size:13px;line-height:1.5;opacity:.7;max
 /* mobile:orientation:end */
 
 /* mobile:hud:begin 任务 8：小屏 HUD 避让 */
+/* 触屏时把 HUD 让出摇杆区、动作区和顶部按钮栏。每个块显式声明位置与尺寸，
+   tests/unit/mobile/hud-geometry.test.mjs 直接解析本分区并与 layout.js 的触控矩形做相交检查。
+   安全区用 --sat/--sar/--sab/--sal（shell 分区定义，无 viewport-fit=cover 时为 0）。
+   看不到像素：内容是否溢出这些盒子，需 scripts/accept-mobile.mjs 在真实页面里量包围盒确认。 */
+/* 雷达缩小，留在左上 */
+html.is-touch #radarWrap{top:calc(var(--sat,0px) + 8px);left:calc(var(--sal,0px) + 12px);width:100px;height:100px}
+/* 比分：紧凑并靠左，让出顶部右侧的触屏按钮栏 */
+html.is-touch #score{top:calc(var(--sat,0px) + 4px);left:calc(var(--sal,0px) + 124px);transform:none;width:268px;height:34px}
+html.is-touch #score .team{min-width:0;flex:1 1 0;padding:2px 8px;gap:6px}
+html.is-touch #score .team .nm{font-size:10px;letter-spacing:0;max-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+html.is-touch #score .team .pts{font-size:20px}
+html.is-touch #score .mid{flex:0 0 84px;min-width:0;padding:1px 6px}
+html.is-touch #score .mid .time{font-size:16px}
+html.is-touch #score .mid .goal{font-size:9px;letter-spacing:0;white-space:nowrap}
+/* 击杀信息：移到中央上方，最多约 3 行 */
+html.is-touch #feed{top:calc(var(--sat,0px) + 56px);left:calc(var(--sal,0px) + 256px);right:auto;width:240px;max-height:60px;overflow:hidden;align-items:center}
+html.is-touch .kf{font-size:12px;padding:1px 8px}
+/* 血量/护甲与弹药：放在摇杆与动作区之间的底部中央（槽位条之上） */
+html.is-touch #vitals{left:calc(var(--sal,0px) + 184px);bottom:calc(var(--sab,0px) + 60px);width:140px;height:36px;gap:6px}
+html.is-touch #vitals .vbox{flex:1 1 0;min-width:0;padding:4px 6px;gap:4px}
+html.is-touch #vitals .vbox .ic{width:16px;height:16px;font-size:14px}
+html.is-touch #vitals .vbox .val{font-size:24px;letter-spacing:0}
+html.is-touch #ammo{left:calc(var(--sal,0px) + 332px);right:auto;bottom:calc(var(--sab,0px) + 60px);width:110px;height:46px;text-align:left}
+html.is-touch #ammo .wname{font-size:10px;letter-spacing:0;margin-bottom:0}
+html.is-touch #ammo .row{justify-content:flex-start;gap:6px}
+html.is-touch #ammo .wicon{display:none}
+html.is-touch #ammo .mag{font-size:28px}
+html.is-touch #ammo .res{font-size:14px;padding-bottom:2px}
+html.is-touch #ammo .hint{font-size:10px;height:10px;margin-top:0}
+/* 槽位列表与触屏 1–4 槽位键重复（弹药块也显示武器名），隐藏 */
+html.is-touch #slots{display:none}
+/* 投掷物/C4 槽位：放到雷达下方的左列 */
+html.is-touch #nadeInfo{left:calc(var(--sal,0px) + 12px);top:calc(var(--sat,0px) + 112px);bottom:auto;width:120px;height:22px}
+html.is-touch #slotC4{left:calc(var(--sal,0px) + 12px);top:calc(var(--sat,0px) + 138px);bottom:auto;width:64px;height:22px}
+/* 宽度 < 800（如 667×375）：底部中央装不下血量+弹药，血量竖排到雷达下，弹药靠左；投掷物/C4 槽位隐藏 */
+@media (pointer:coarse) and (max-width:799px){
+  html.is-touch #radarWrap{width:92px;height:92px}
+  html.is-touch #feed{width:190px}
+  html.is-touch #vitals{left:calc(var(--sal,0px) + 12px);top:calc(var(--sat,0px) + 106px);bottom:auto;width:96px;height:64px;flex-direction:column;gap:4px}
+  html.is-touch #ammo{left:calc(var(--sal,0px) + 184px)}
+  html.is-touch #nadeInfo,html.is-touch #slotC4{display:none}
+}
 /* mobile:hud:end */
 
 /* mobile:end */
