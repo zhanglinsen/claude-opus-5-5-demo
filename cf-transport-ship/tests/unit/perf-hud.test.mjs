@@ -181,3 +181,19 @@ test('投掷物背包：稳定帧不重写 innerHTML，剩余量变化才写，�
   assert.ok(hud.el.nadeInfo.classList.contains('hidden'), '全部投完后整条隐藏');
   assert.equal(hud.el.nadeInfo.htmlWrites, 2, '隐藏不经 innerHTML 重写');
 });
+
+test('同一元素 txt/htm 交替写：切回旧文本时不因另一通道的缓存而跳过', () => {
+  const hud = makeHud();
+  hud._initCaches();
+  // 真实 DOM 中 textContent 与 innerHTML 是同一份内容
+  let content = '';
+  const el = {};
+  Object.defineProperty(el, 'textContent', { get: () => content.replace(/<[^>]*>/g, ''), set: (v) => { content = String(v); } });
+  Object.defineProperty(el, 'innerHTML', { get: () => content, set: (v) => { content = String(v); } });
+  hud.txt(el, '观战中');
+  hud.htm(el, '<b>击杀者</b>');
+  hud.txt(el, '观战中');
+  assert.equal(el.textContent, '观战中');
+  hud.htm(el, '<b>击杀者</b>');
+  assert.equal(el.innerHTML, '<b>击杀者</b>');
+});

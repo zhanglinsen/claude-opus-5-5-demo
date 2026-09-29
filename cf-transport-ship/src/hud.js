@@ -209,12 +209,12 @@ export class HUD {
   txt(el, v) {
     let m = this._txt.get(el);
     if (m === undefined) this._txt.set(el, m = {});
-    if (m.v !== v) { m.v = v; el.textContent = v; }
+    if (m.v !== v) { m.v = v; m.h = undefined; el.textContent = v; } // 两通道写同一内容，互相失效
   }
   htm(el, v) {
     let m = this._txt.get(el);
     if (m === undefined) this._txt.set(el, m = {});
-    if (m.h !== v) { m.h = v; el.innerHTML = v; }
+    if (m.h !== v) { m.h = v; m.v = undefined; el.innerHTML = v; }
   }
   cls(el, name, on) {
     let m = this._cls.get(el);
