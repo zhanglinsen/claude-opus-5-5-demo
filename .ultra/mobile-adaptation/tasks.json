@@ -1,0 +1,183 @@
+{
+  "schema_version": "1.0.0",
+  "created": "2026-09-30",
+  "planning": {
+    "phase": "complete",
+    "scope_mode": "SELECTIVE",
+    "decision_ref": "用户 2026-09-30：评估并制定 cf-transport-ship 手机端适配计划；只处理 cf；在单独 worktree；不能影响性能优化任务；用户确认后才允许合并",
+    "included_story_ids": ["US-M01", "US-M02", "US-M03", "US-M04", "US-M05", "US-M06"],
+    "excluded_story_ids": ["US-M07", "US-M08", "US-M09"],
+    "story_refs": {
+      "US-M01": ".ultra/specs/mobile-adaptation-20260930.md#US-M01",
+      "US-M02": ".ultra/specs/mobile-adaptation-20260930.md#US-M02",
+      "US-M03": ".ultra/specs/mobile-adaptation-20260930.md#US-M03",
+      "US-M04": ".ultra/specs/mobile-adaptation-20260930.md#US-M04",
+      "US-M05": ".ultra/specs/mobile-adaptation-20260930.md#US-M05",
+      "US-M06": ".ultra/specs/mobile-adaptation-20260930.md#US-M06",
+      "US-M07": ".ultra/specs/mobile-adaptation-20260930.md#US-M07",
+      "US-M08": ".ultra/specs/mobile-adaptation-20260930.md#US-M08",
+      "US-M09": ".ultra/specs/mobile-adaptation-20260930.md#US-M09"
+    },
+    "required_spec_refs": [
+      ".ultra/specs/mobile-adaptation-20260930.md#US-M01",
+      ".ultra/specs/mobile-adaptation-20260930.md#US-M02",
+      ".ultra/specs/mobile-adaptation-20260930.md#US-M03",
+      ".ultra/specs/mobile-adaptation-20260930.md#US-M04",
+      ".ultra/specs/mobile-adaptation-20260930.md#US-M05",
+      ".ultra/specs/mobile-adaptation-20260930.md#US-M06"
+    ],
+    "gaps": [
+      {
+        "id": "G-01",
+        "status": "accepted",
+        "reason": "浏览器/真机验证被后置：本机 xcrun simctl 不可用（无完整 Xcode），且性能任务规定浏览器/GPU 由集成者串行占用，计划与实现期间不得占用。实现阶段只有 Node 桩单测",
+        "decision_ref": "用户 2026-09-30：不能影响性能优化任务",
+        "follow_up": "任务 9 在集成者释放浏览器/GPU 且用户同意后执行；任务 10 的真机清单由用户或测试机完成"
+      },
+      {
+        "id": "G-02",
+        "status": "accepted",
+        "reason": "基线为规划者假设：perf-integration-20260929@bc8e3e1，而非 main；性能任务最终落到哪个分支/提交尚未确定",
+        "decision_ref": "规划者假设，未经用户确认（规格“需要用户确认的决策”D1）",
+        "follow_up": "任务 10 rebase 之前向用户确认最终基线与合并目标"
+      },
+      {
+        "id": "G-03",
+        "status": "not_applicable",
+        "reason": "pelican-bike、qq-speed 的移动端不在范围：用户 2026-09-30 指定当前只处理 cf-transport-ship"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "1",
+      "title": "性能隔离守卫与桌面等价测试",
+      "type": "architecture",
+      "priority": "P0",
+      "complexity": 3,
+      "status": "pending",
+      "dependencies": [],
+      "story_ids": ["US-M06"],
+      "estimated_days": "0.3-0.5",
+      "context_file": "contexts/task-1.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M06"
+    },
+    {
+      "id": "2",
+      "title": "触屏缺陷红测试",
+      "type": "bugfix",
+      "priority": "P0",
+      "complexity": 3,
+      "status": "pending",
+      "dependencies": ["1"],
+      "story_ids": ["US-M01", "US-M02", "US-M03"],
+      "estimated_days": "0.3-0.5",
+      "context_file": "contexts/task-2.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M01"
+    },
+    {
+      "id": "3",
+      "title": "触屏输入稳健化与自适应布局",
+      "type": "bugfix",
+      "priority": "P0",
+      "complexity": 5,
+      "status": "pending",
+      "dependencies": ["2"],
+      "story_ids": ["US-M02"],
+      "estimated_days": "0.5-1",
+      "context_file": "contexts/task-3.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M02"
+    },
+    {
+      "id": "4",
+      "title": "触屏菜单与动作补全",
+      "type": "feature",
+      "priority": "P0",
+      "complexity": 5,
+      "status": "pending",
+      "dependencies": ["3"],
+      "story_ids": ["US-M01"],
+      "estimated_days": "0.5-1",
+      "context_file": "contexts/task-4.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M01"
+    },
+    {
+      "id": "5",
+      "title": "中断与后台生命周期",
+      "type": "feature",
+      "priority": "P0",
+      "complexity": 5,
+      "status": "pending",
+      "dependencies": ["4"],
+      "story_ids": ["US-M03"],
+      "estimated_days": "0.5-1",
+      "context_file": "contexts/task-5.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M03"
+    },
+    {
+      "id": "6",
+      "title": "视口与页面壳",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 4,
+      "status": "pending",
+      "dependencies": ["3"],
+      "story_ids": ["US-M04"],
+      "estimated_days": "0.5-0.8",
+      "context_file": "contexts/task-6.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M04"
+    },
+    {
+      "id": "7",
+      "title": "横屏引导与全屏",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 3,
+      "status": "pending",
+      "dependencies": ["4", "6"],
+      "story_ids": ["US-M04"],
+      "estimated_days": "0.3-0.6",
+      "context_file": "contexts/task-7.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M04"
+    },
+    {
+      "id": "8",
+      "title": "小屏 HUD 与触控区避让",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 5,
+      "status": "pending",
+      "dependencies": ["6"],
+      "story_ids": ["US-M05"],
+      "estimated_days": "0.5-1",
+      "context_file": "contexts/task-8.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M05"
+    },
+    {
+      "id": "9",
+      "title": "移动端浏览器验收脚本（GPU 空闲后执行）",
+      "type": "feature",
+      "priority": "P1",
+      "complexity": 6,
+      "status": "pending",
+      "dependencies": ["5", "7", "8"],
+      "story_ids": ["US-M01", "US-M02", "US-M03", "US-M04", "US-M05"],
+      "estimated_days": "0.8-1.5",
+      "context_file": "contexts/task-9.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M01"
+    },
+    {
+      "id": "10",
+      "title": "基线对齐、真机清单与合并确认",
+      "type": "feature",
+      "priority": "P0",
+      "complexity": 3,
+      "status": "pending",
+      "dependencies": ["9"],
+      "story_ids": ["US-M06"],
+      "estimated_days": "0.3-0.6",
+      "context_file": "contexts/task-10.md",
+      "trace_to": ".ultra/specs/mobile-adaptation-20260930.md#US-M06"
+    }
+  ]
+}
