@@ -65,11 +65,16 @@ class Decals {
     scene.add(this.mesh);
     this.max = max; this.i = 0;
     this.m = new THREE.Matrix4(); this.q = new THREE.Quaternion(); this.q2 = new THREE.Quaternion();
+    // 实例自有 scratch：add 热路径零分配（只读复用，不被这些方法修改）
+    this._z = new THREE.Vector3(0, 0, 1);
+    this._pos = new THREE.Vector3(); this._scl = new THREE.Vector3();
   }
   add(p, n, size) {
-    const q = this.q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-    q.multiply(this.q2.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.random() * Math.PI * 2));
-    this.m.compose(new THREE.Vector3(p.x + n.x * 0.004, p.y + n.y * 0.004, p.z + n.z * 0.004), q, new THREE.Vector3(size, size, size));
+    const q = this.q.setFromUnitVectors(this._z, n);
+    q.multiply(this.q2.setFromAxisAngle(this._z, Math.random() * Math.PI * 2));
+    this._pos.set(p.x + n.x * 0.004, p.y + n.y * 0.004, p.z + n.z * 0.004);
+    this._scl.set(size, size, size);
+    this.m.compose(this._pos, q, this._scl);
     this.mesh.setMatrixAt(this.i % this.max, this.m);
     this.i++;
     this.mesh.count = Math.min(this.i, this.max);
@@ -125,6 +130,10 @@ export class Effects {
     this.shake = 0;
     this.funnelT = 0;
     this.birds = [];
+    // 实例自有 scratch：update 每帧零分配，实例间不共享可变状态
+    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._basis = new THREE.Matrix4();
+    this._sv = new THREE.Vector3(); this._mid = new THREE.Vector3(); this._toCam = new THREE.Vector3();
+    this._up = new THREE.Vector3(); this._nrm = new THREE.Vector3();
   }
   light(pos, intensity, dur, color = 0xffa850, dist = 9) {
     const L = this.lights[this.lightI++ % this.lights.length];
@@ -216,27 +225,38 @@ export class Effects {
     const h = window.innerHeight * Math.min(window.devicePixelRatio, 2);
     const sc = h / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     this.add.mat.uniforms.scale.value = sc; this.smoke.mat.uniforms.scale.value = sc;
-    // 曳光
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sv = new THREE.Vector3(), pv = new THREE.Vector3();
+    // 曳光：头部以 speed 前行、尾部落后 7 追上后完全退出；顺序稳定原位紧缩
+    const m = this._m, q = this._q, sv = this._sv, pv = this._mid;
     const camPos = camera.position;
     let n = 0;
     const speed = 380;
-    this.tracers = this.tracers.filter((tr) => {
+    const trs = this.tracers;
+    for (let i = 0; i < trs.length; i++) {
+      const tr = trs[i];
       tr.t += dt;
-      const head = Math.min(tr.len, tr.t * speed), tail = Math.max(0, head - 7);
-      if (tail >= tr.len) return false;
+      const headRaw = tr.t * speed;
+      const head = Math.min(tr.len, headRaw), tail = Math.max(0, headRaw - 7);
+      if (tail >= tr.len) continue; // 尾部越过末端：完全退出
+      const seg = head - tail;
+      if (!(seg > 0)) continue; // 零长/异常输入不写出 NaN 矩阵
       const mid = pv.copy(tr.from).addScaledVector(tr.dir, (head + tail) / 2);
-      const toCam = camPos.clone().sub(mid).normalize();
-      const up = new THREE.Vector3().crossVectors(tr.dir, toCam).normalize();
-      const nrm = new THREE.Vector3().crossVectors(tr.dir, up);
-      const basis = new THREE.Matrix4().makeBasis(tr.dir, up, nrm);
-      q.setFromRotationMatrix(basis);
+      const toCam = this._toCam.copy(camPos).sub(mid).normalize();
+      const up = this._up.crossVectors(tr.dir, toCam);
+      if (!(up.lengthSq() > 1e-8)) {
+        // 相机在射线延长线上，叉积退化：改取与 dir 垂直的稳定参考轴
+        const ref = Math.abs(tr.dir.y) > 0.9 ? this._toCam.set(1, 0, 0) : this._toCam.set(0, 1, 0);
+        up.crossVectors(ref, tr.dir);
+      }
+      up.normalize();
+      const nrm = this._nrm.crossVectors(tr.dir, up);
+      q.setFromRotationMatrix(this._basis.makeBasis(tr.dir, up, nrm));
       const dist = mid.distanceTo(camPos);
-      sv.set(head - tail, 0.018 + dist * 0.0012, 1);
+      sv.set(seg, 0.018 + dist * 0.0012, 1);
       m.compose(mid, q, sv);
-      if (n < this.tracerMax) this.tracerMesh.setMatrixAt(n++, m);
-      return true;
-    });
+      this.tracers[n++] = tr;
+      if (n <= this.tracerMax) this.tracerMesh.setMatrixAt(n - 1, m);
+    }
+    trs.length = n;
     this.tracerMesh.count = n; this.tracerMesh.instanceMatrix.needsUpdate = true;
     for (const F of this.flashes) if (F.t > 0) { F.t -= dt; if (F.t <= 0) F.s.visible = false; }
     for (const L of this.lights) { if (L.t > 0) { L.t -= dt; L.l.intensity = Math.max(0, L.t / L.dur) * L.peak; } else L.l.intensity = 0; }

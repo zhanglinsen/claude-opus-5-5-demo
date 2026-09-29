@@ -44,6 +44,7 @@ const BOMB_REASON_KEYS = {
 const interp = (text, params) => (params ? text.replace(/\{(\w+)\}/g, (m, n) => (params[n] != null ? String(params[n]) : m)) : text);
 const zhT = (k, params) => interp(CATALOGS.zh && CATALOGS.zh[k] !== undefined ? CATALOGS.zh[k] : k, params);
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3();
+const _q = new THREE.Quaternion(), _sunCam = new THREE.Vector3(); // renderFrame 专用：太阳方向到相机空间的复用临时对象
 
 // 释放角色 GPU 独占资源：SkinnedMesh 的 skeleton.boneTexture 由渲染器首帧惰性分配
 // （每士兵一张 DataTexture），scene.remove 不触发释放——不补 dispose 会随每局重开
@@ -1167,7 +1168,7 @@ export class Game {
       const p = this.player;
       if (this.frame % 6 === 0 || !this.lightK) this.updateLightProbe();
       this.frame++;
-      const sunCam = this.env.sunDir.clone().applyQuaternion(cam.quaternion.clone().invert());
+      const sunCam = _sunCam.copy(this.env.sunDir).applyQuaternion(_q.copy(cam.quaternion).invert());
       this.vm.setVisible(p.alive && !(p.scoped && p.weapon.def.type === 'sniper'));
       this.vm.update(dt, { speed: p.speed || 0, onGround: p.onGround, crouch: p.crouch, lookDX: p.lookDX, lookDY: p.lookDY, sunDirCam: sunCam, light: this.lightK, indoor: this.indoorK > 0.5 });
       R.vmScene.environmentIntensity = 0.75 * (0.35 + 0.65 * (1 - this.indoorK));
