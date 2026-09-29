@@ -372,6 +372,12 @@ html[lang="en"] .kf{font-size:13px}
    或位于 @media (pointer:coarse) 内；块外内容与基线逐字相同。各分区只由对应 lane 修改自己哨兵之间的内容。 */
 
 /* mobile:shell:begin 任务 6：视口与页面壳 */
+/* 安全区变量：没有 viewport-fit=cover 时均为 0，无害；供 #touch 与 HUD 规则使用 */
+html.is-touch{--sat:env(safe-area-inset-top,0px);--sar:env(safe-area-inset-right,0px);--sab:env(safe-area-inset-bottom,0px);--sal:env(safe-area-inset-left,0px)}
+/* 禁下拉刷新、长按菜单、点击高亮；100dvh 避免移动浏览器地址栏伸缩造成的高度错位（100% 为回退） */
+html.is-touch,html.is-touch body{height:100%;height:100dvh;overscroll-behavior:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+/* 只有画布与触控层禁止浏览器手势；大厅/暂停等 .screen 需要触摸滚动，所以不能给 body/#ui 设 touch-action:none */
+html.is-touch #c,html.is-touch #touch{touch-action:none}
 /* mobile:shell:end */
 
 /* mobile:input:begin 任务 3：#touch 与按钮 */
