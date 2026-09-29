@@ -13,7 +13,7 @@ function setup(over = {}) {
   return { game, touch, detach, player: game.player, btn: (act) => touch.button(act) };
 }
 
-test('挂接后新增 9 个按钮：menu board loadout inspect slot1-4，文本与 labelKey 符合契约', () => {
+test('挂接后新增 8 个按钮：menu board loadout inspect slot1-4，文本与 labelKey 符合契约', () => {
   const { touch } = setup();
   const acts = touch.buttons.map((b) => b.dataset.act);
   assert.deepEqual(acts, ['menu', 'board', 'loadout', 'inspect', 'slot1', 'slot2', 'slot3', 'slot4']);
@@ -87,8 +87,9 @@ test('配装/检视/槽位注入对应键位到 pressed', () => {
   for (let i = 1; i <= 4; i++) { press(touch.button('slot' + i)); assert.equal(player.pressed.has('Digit' + i), true, 'slot' + i); }
 });
 
-test('不在对局中（暂停/结算/大厅）时配装/检视/槽位都不产生输入', () => {
-  for (const over of [{ paused: true }, { ended: true }, { playing: false }]) {
+test('不在对局中（暂停/广告暂停/结算/大厅）时配装/检视/槽位都不产生输入', () => {
+  // 广告暂停只停循环不置 paused：期间注入的键会在广告结束后的第一帧补触发（审核 A1）
+  for (const over of [{ paused: true }, { adPaused: true }, { ended: true }, { playing: false }]) {
     const { touch, player } = setup(over);
     for (const act of ['loadout', 'inspect', 'slot1', 'slot4']) press(touch.button(act));
     assert.equal(player.pressed.size, 0, JSON.stringify(over));

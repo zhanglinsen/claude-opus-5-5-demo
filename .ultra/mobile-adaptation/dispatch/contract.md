@@ -41,7 +41,7 @@
 | `root: HTMLElement` | `#touch` 根节点 |
 | `layout` | 当前 `computeLayout` 结果（见 `src/mobile/layout.js`） |
 | `player(): Player \| null` | `game.player` 或 null |
-| `isPlaying(): boolean` | `g.playing && !g.paused && !g.ended` |
+| `isPlaying(): boolean` | `g.playing && !g.paused && !g.ended && !g.adPaused`（2026-09-30 审核 A1：广告暂停只停循环不置 `paused`，期间注入的键会在广告结束后补触发，所以必须排除） |
 | `requestPause(reason: string): boolean` | **唯一的暂停入口**。守卫：`g.playing && !g.paused && !g.ended && !g.adPaused` 才执行；执行时先 `resetTouchState()` 再 `g.pause()`，返回 true；否则不做任何事返回 false。模块**不得**自己调用 `g.pause()` |
 | `resetTouchState(): void` | 清零 `player.touch.{fire,firePressed,jump,crouch,mx,mz}`、`player.touchLook`、`player.mouse.r`，复位摇杆 UI 与触点追踪 |
 | `addButton(spec): HTMLElement` | 见下 |

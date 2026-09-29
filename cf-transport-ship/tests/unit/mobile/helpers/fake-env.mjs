@@ -177,7 +177,7 @@ export function makeFakeTouch(game) {
     resetCount: 0,
     pauseReasons: [],
     player: () => game.player || null,
-    isPlaying: () => !!(game.playing && !game.paused && !game.ended),
+    isPlaying: () => !!(game.playing && !game.paused && !game.ended && !game.adPaused), // 与 touch.js 一致：广告暂停不算“对局中”
     // 集中暂停守卫：模块不得直接调用 game.pause()
     requestPause(reason) {
       if (!(game.playing && !game.paused && !game.ended && !game.adPaused)) return false;

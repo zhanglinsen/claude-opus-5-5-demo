@@ -66,12 +66,16 @@ test('用例7：配装/检视/槽位注入 KeyB/KeyF/Digit1-4', () => {
   }
 });
 
-test('用例7：不在对局中时动作按钮不产生输入', () => {
-  const { byAct, player } = setup({ gameOver: { paused: true } });
-  for (const act of ['loadout', 'inspect', 'slot1', 'slot2']) byAct(act).dispatch('touchstart');
-  byAct('board').dispatch('touchstart');
-  assert.equal(player.pressed.size, 0);
-  assert.equal(player.keys.has('Tab'), false);
+test('用例7：不在对局中（暂停/广告暂停/结算/大厅）时动作按钮不产生输入', () => {
+  // adPaused 只停循环、不置 paused（game.js enterAdPause）：期间注入的键会在广告结束后的第一帧补触发，必须挡住（审核 A1）
+  for (const gameOver of [{ paused: true }, { adPaused: true }, { ended: true }, { playing: false }]) {
+    const { byAct, player } = setup({ gameOver });
+    for (const act of ['loadout', 'inspect', 'slot1', 'slot2']) byAct(act).dispatch('touchstart');
+    byAct('board').dispatch('touchstart');
+    assert.equal(player.pressed.size, 0, `${JSON.stringify(gameOver)}: 动作按钮注入了输入`);
+    assert.equal(player.keys.has('Tab'), false, `${JSON.stringify(gameOver)}: 记分板被开启`);
+    ctx.cleanup(); ctx = null;
+  }
 });
 
 test('新增 8 个按钮都在视口内、≥44px，且与既有按钮互不重叠（844×390、932×430、667×375、含安全区无关的基础几何）', () => {

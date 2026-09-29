@@ -102,7 +102,9 @@ export class TouchControls {
 
   player() { return (this.g && this.g.player) || null; }
 
-  isPlaying() { const g = this.g; return !!(g && g.playing && !g.paused && !g.ended); }
+  // 广告暂停（adPaused）只停循环、不置 paused（game.js enterAdPause）：期间注入的键会在广告结束后的第一帧补触发，
+  // 所以“对局中”必须排除它，触屏输入才不会穿透到已冻结的对局
+  isPlaying() { const g = this.g; return !!(g && g.playing && !g.paused && !g.ended && !g.adPaused); }
 
   // 唯一的暂停入口：广告暂停期间不覆盖；执行时先清触屏状态，避免恢复后“按住”状态残留
   requestPause(reason) {
@@ -122,7 +124,8 @@ export class TouchControls {
       const t = p.touch;
       if (t) { t.fire = false; t.firePressed = false; t.jump = false; t.crouch = false; t.mx = 0; t.mz = 0; }
       if (p.touchLook) { p.touchLook.x = 0; p.touchLook.y = 0; }
-      if (p.mouse) p.mouse.r = false;
+      // lp/rp 由开火/“镜”按下时置位、每帧末才被消费；暂停期间循环停止无人消费，不清会在恢复后“走火一发”或误开镜
+      if (p.mouse) { p.mouse.r = false; p.mouse.lp = false; p.mouse.rp = false; }
     }
     this._padId = null; this._lookId = null; this._origin = null; this._look = null;
     if (this.layout) this._placePad(this.layout.items.pad);
@@ -170,9 +173,9 @@ export class TouchControls {
 
   // 合并同一帧内的多次 resize/orientationchange/visualViewport；无 rAF 的环境（单测）直接执行
   _scheduleLayout() {
-    if (this._layoutPending) return;
+    if (this._destroyed || this._layoutPending) return; // destroy 之后不再重排（window 监听随页面存活，但不该再碰已卸载的元素）
     this._layoutPending = true;
-    const run = () => { this._layoutPending = false; this.applyLayout(); };
+    const run = () => { this._layoutPending = false; if (!this._destroyed) this.applyLayout(); };
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else run();
   }
 
@@ -309,6 +312,7 @@ export class TouchControls {
   }
   // 退订语言服务并卸载移动端模块；DOM 与 window 监听保持现状（本组件随页面存活，无 DOM 拆除需求）
   destroy() {
+    this._destroyed = true;
     if (this._unsubLocale) { this._unsubLocale(); this._unsubLocale = null; }
     if (this._detachMobile) { this._detachMobile(); this._detachMobile = null; }
     if (this._probe && this._probe.remove) { this._probe.remove(); this._probe = null; } // 安全区探针元素

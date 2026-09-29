@@ -13,7 +13,9 @@ export function attach(game, touch) {
   if (typeof matchMedia !== 'function') return () => {};
 
   const mq = matchMedia('(orientation:portrait)');
-  const isIOS = typeof navigator !== 'undefined' && navigator && /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+  // iPadOS 13+ 的 Safari 默认发送桌面版 UA（Macintosh），要靠多点触控区分于真正的 Mac
+  const isIOS = typeof navigator !== 'undefined' && !!navigator
+    && (/iPhone|iPad|iPod/.test(navigator.userAgent || '') || (/Macintosh/.test(navigator.userAgent || '') && navigator.maxTouchPoints > 1));
 
   // 遮罩：一行提示 +（仅 iOS）一行“添加到主屏幕”。文字在每次显示时重新取，语言切换后下次显示生效。
   const guard = document.createElement('div');

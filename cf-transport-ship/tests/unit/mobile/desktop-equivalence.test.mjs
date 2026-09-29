@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const MOBILE_DIR = fileURLToPath(new URL('../../../src/mobile/', import.meta.url));
@@ -31,14 +32,25 @@ function withGlobals(overrides, fn) {
   } catch (e) { restore(); throw e; }
 }
 
-test('src/mobile/*.js 全部模块导入时无副作用（不访问 window/document/matchMedia/navigator/screen）', async () => {
+test('src/mobile/*.js 全部模块导入时无副作用（不访问 window/document/matchMedia/navigator/screen）', () => {
   const files = fs.readdirSync(MOBILE_DIR).filter((f) => f.endsWith('.js')).sort();
   assert.ok(files.length >= 6, `应至少有 layout/index/menu/lifecycle/orientation/fullscreen，实际：${files.join(',')}`);
-  await withGlobals({ window: trap('window'), document: trap('document'), matchMedia: trap('matchMedia'), navigator: trap('navigator'), screen: trap('screen') }, async () => {
-    for (const f of files) {
-      await import(pathToFileURL(MOBILE_DIR + f).href); // 导入即执行顶层代码；任何全局访问都会抛错
+  // 在**子进程**里导入：本进程的 ESM 模块缓存会让后面的动态 import 空转（若此测试排在别的 import 之后就会静默失效，审核弱点 1）
+  const urls = files.map((f) => pathToFileURL(MOBILE_DIR + f).href);
+  const script = `
+    const trap = (name) => new Proxy(function trapped() {}, {
+      get(_t, p) { throw new Error('导入时不应访问 ' + name + '.' + String(p)); },
+      set() { throw new Error('导入时不应写入 ' + name); },
+      apply() { throw new Error('导入时不应调用 ' + name + '()'); },
+      has() { throw new Error('导入时不应探测 ' + name); },
+    });
+    for (const k of ['window', 'document', 'matchMedia', 'navigator', 'screen']) {
+      Object.defineProperty(globalThis, k, { value: trap(k), configurable: true, writable: true });
     }
-  });
+    for (const u of ${JSON.stringify(urls)}) await import(u);
+  `;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 30000 });
+  assert.equal(r.status, 0, `导入 src/mobile 模块时访问了浏览器全局：\n${r.stderr}`);
 });
 
 test('桌面（pointer:coarse 为假、无 ?touch）：TouchControls 不启用，不访问 DOM，不注册监听', async () => {

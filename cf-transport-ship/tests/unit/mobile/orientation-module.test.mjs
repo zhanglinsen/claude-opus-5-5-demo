@@ -22,9 +22,9 @@ function setup({ width = 844, height = 390, over = {} } = {}) {
   return { game, touch, detach, guard, pauses: () => game.calls.filter((c) => c === 'pause').length };
 }
 
-function withUserAgent(ua) {
+function withUserAgent(ua, maxTouchPoints = 0) {
   savedNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator') || { value: undefined, configurable: true, writable: true };
-  Object.defineProperty(globalThis, 'navigator', { value: { userAgent: ua }, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'navigator', { value: { userAgent: ua, maxTouchPoints }, configurable: true, writable: true });
 }
 
 test('对局中变为竖屏：显示遮罩并暂停一次，原因为 orientation', () => {
@@ -109,6 +109,18 @@ test('iOS UA 才显示“添加到主屏幕”一行', () => {
   withUserAgent('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36');
   const android = setup();
   assert.equal(android.guard().children.length, 1);
+});
+
+test('iPadOS 13+：UA 伪装成 Macintosh 但有多点触控 → 也显示“添加到主屏幕”；真正的桌面 Mac 不显示（审核 S1）', () => {
+  const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+  withUserAgent(mac, 5);
+  const ipad = setup();
+  assert.equal(ipad.guard().children.length, 2, 'iPadOS 13+ 应被识别为 iOS');
+  mock.timers.reset(); env.restore(); env = null;
+
+  withUserAgent(mac, 0);
+  const desktop = setup();
+  assert.equal(desktop.guard().children.length, 1, '无触点的桌面 Mac 不应显示');
 });
 
 test('detach：移除遮罩、停止轮询、不再响应方向变化，且幂等', () => {

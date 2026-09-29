@@ -38,12 +38,51 @@ test('用例2：window blur 清零全部触屏状态', () => {
   const { fireWindow, player } = setup();
   Object.assign(player.touch, { fire: true, firePressed: true, jump: true, crouch: true, mx: 0.7, mz: -0.3 });
   player.touchLook.x = 5; player.touchLook.y = -4;
-  player.mouse.r = true;
+  player.mouse.r = true; player.mouse.lp = true; player.mouse.rp = true;
   fireWindow('blur');
   assert.deepEqual(player.touch, { mx: 0, mz: 0, fire: false, jump: false, crouch: false, firePressed: false },
     'blur 后 touch.* 未清零：只清了键盘/鼠标');
   assert.deepEqual(player.touchLook, { x: 0, y: 0 });
   assert.equal(player.mouse.r, false);
+  // 开火按下会置 mouse.lp、“镜”会置 mouse.rp；它们每帧末才被消费，暂停期间循环停止无人消费，不清会在恢复后“走火一发”（审核 A2）
+  assert.equal(player.mouse.lp, false, 'blur 后 mouse.lp 残留');
+  assert.equal(player.mouse.rp, false, 'blur 后 mouse.rp 残留');
+});
+
+test('审核 A2：按住开火时暂停，恢复后不会因残留的 mouse.lp/rp 走火或误开镜', () => {
+  const { byAct, player, touch } = setup();
+  byAct('fire').dispatch('touchstart');
+  byAct('scope').dispatch('touchstart');
+  assert.equal(player.mouse.lp, true); assert.equal(player.mouse.rp, true);
+  touch.requestPause('t'); // 与菜单/切后台同一路径
+  assert.equal(player.mouse.lp, false, '暂停后 mouse.lp 残留');
+  assert.equal(player.mouse.rp, false, '暂停后 mouse.rp 残留');
+});
+
+test('审核 A1：广告暂停期间触摸不驱动摇杆与视角（isPlaying 必须包含 !adPaused）', () => {
+  const { fireWindow, player, touch } = setup({ gameOver: { adPaused: true } });
+  assert.equal(touch.isPlaying(), false);
+  fireWindow('touchstart', { target: canvasTarget(), changedTouches: [touchPoint(1, 300, 100), touchPoint(2, 600, 200)] });
+  fireWindow('touchmove', { changedTouches: [touchPoint(1, 340, 100), touchPoint(2, 620, 200)] });
+  assert.equal(player.touch.mx, 0);
+  assert.deepEqual(player.touchLook, { x: 0, y: 0 });
+});
+
+test('审核 S3：destroy 之后窗口 resize 不再重排（不会给已移除的元素写样式/重建探针）', () => {
+  const { env, touch } = setup();
+  touch.destroy();
+  env.setViewport(390, 844);
+  assert.equal(touch.layout.w, 844, 'destroy 后仍在重排');
+});
+
+test('审核弱点 2：按钮上的触摸会 stopPropagation，不会同时变成摇杆/视角触点', () => {
+  const { byAct } = setup();
+  for (const act of ['fire', 'jump', 'menu', 'scope']) {
+    const e = byAct(act).dispatch('touchstart');
+    assert.equal(e.propagationStopped, true, `${act} 的 touchstart 未 stopPropagation：会冒泡到 window 变成视角/摇杆触点`);
+    assert.equal(e.defaultPrevented, true, `${act} 的 touchstart 未 preventDefault`);
+    byAct(act).dispatch('touchend');
+  }
 });
 
 test('用例2：blur 后旧的摇杆触点不再驱动移动', () => {
