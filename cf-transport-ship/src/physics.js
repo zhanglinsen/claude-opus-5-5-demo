@@ -18,6 +18,7 @@ export class Collider {
     this.minX = this.x - ex; this.maxX = this.x + ex;
     this.minZ = this.z - ez; this.maxZ = this.z + ez;
     this.stamp = 0;
+    this.gridIdx = -1; this.rayKey = 0; // World.build 序号 / 射线候选排序键
     this.tag = o.tag || '';
   }
   // 世界 -> 局部（XZ）
@@ -55,6 +56,7 @@ export class Ramp {
     this.surface = o.surface || 'stone';
     this.tag = o.tag || '';
     this.stamp = 0;
+    this.gridIdx = -1; this.rayKey = 0;
     const ex = Math.abs(this.c) * this.hx + Math.abs(this.s) * this.hz;
     const ez = Math.abs(this.s) * this.hx + Math.abs(this.c) * this.hz;
     this.minX = this.x - ex; this.maxX = this.x + ex;
@@ -115,6 +117,10 @@ export class Ramp {
 }
 
 const CELL = 4;
+const RAY_PAD = 0.1; // 射线宽阶段外扩，与旧包围矩形 query 的余量一致
+
+// 射线候选按旧矩形扫描的首访格（x 外层、z 内层）排序，同格按构建顺序
+const byRayOrder = (a, b) => (a.rayKey - b.rayKey) || (a.gridIdx - b.gridIdx);
 
 export class World {
   constructor() {
@@ -122,6 +128,7 @@ export class World {
     this.grid = new Map();
     this.stamp = 1;
     this._cand = [];
+    this._rayCand = [];
   }
   add(o) {
     const c = o instanceof Collider ? o : new Collider(o);
@@ -135,7 +142,9 @@ export class World {
   }
   build() {
     this.grid.clear();
-    for (const c of this.colliders) {
+    for (let i = 0; i < this.colliders.length; i++) {
+      const c = this.colliders[i];
+      c.gridIdx = i;
       const x0 = Math.floor(c.minX / CELL), x1 = Math.floor(c.maxX / CELL);
       const z0 = Math.floor(c.minZ / CELL), z1 = Math.floor(c.maxZ / CELL);
       for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
@@ -161,6 +170,54 @@ export class World {
         out.push(c);
       }
     }
+    return out;
+  }
+
+  // 射线宽阶段：旧实现 query 起终点的整个包围矩形，长对角射线访问格数近似长度平方。
+  // 这里逐列只访问线段（XZ 投影，两向外扩 RAY_PAD）经过的格子——这些格子是旧矩形的子集，
+  // 且覆盖线段 RAY_PAD 以内的全部格子，故候选集包含一切可能命中；AABB 过滤与旧 query 相同。
+  // 为保持等距命中的赢家和 raycastAll 的同 t 顺序，候选按"旧矩形扫描中的首访格 + 构建序号"排序。
+  // 返回内部复用数组，调用方不可跨调用持有；移动/导航继续用 query()。
+  _rayCands(ox, oz, dx, dz, maxT) {
+    const out = this._rayCand; out.length = 0;
+    const ex = ox + dx * maxT, ez = oz + dz * maxT;
+    const sx0 = Math.min(ox, ex), sx1 = Math.max(ox, ex);
+    const minX = sx0 - RAY_PAD, maxX = sx1 + RAY_PAD;
+    const minZ = Math.min(oz, ez) - RAY_PAD, maxZ = Math.max(oz, ez) + RAY_PAD;
+    const x0 = Math.floor(minX / CELL), x1 = Math.floor(maxX / CELL);
+    const z0 = Math.floor(minZ / CELL), z1 = Math.floor(maxZ / CELL);
+    if (!(x1 >= x0 && z1 >= z0)) return out; // NaN 输入：与旧 query 一样无候选
+    const zSpan = z1 - z0 + 1;
+    const k = sx1 > sx0 ? (ez - oz) / (ex - ox) : 0; // 线段 z 对 x 的斜率
+    const st = ++this.stamp;
+    let full = true; // 每列都访问了完整 z 范围 → 访问顺序即旧扫描顺序，免排序
+    for (let x = x0; x <= x1; x++) {
+      let zs = z0, ze = z1;
+      if (x1 > x0 && sx1 > sx0) { // 跨多列时逐列收窄；单列或无 x 跨度时即访问旧矩形本身
+        // 本列（外扩后）与线段 x 区间的交，求其 z 范围
+        const ax = Math.min(sx1, Math.max(sx0, x * CELL - RAY_PAD));
+        const bx = Math.min(sx1, Math.max(sx0, (x + 1) * CELL + RAY_PAD));
+        const za = oz + (ax - ox) * k, zb = oz + (bx - ox) * k;
+        zs = Math.max(z0, Math.floor((Math.min(za, zb) - RAY_PAD) / CELL));
+        ze = Math.min(z1, Math.floor((Math.max(za, zb) + RAY_PAD) / CELL));
+        if (!(ze >= zs)) { zs = z0; ze = z1; } // 数值异常时退回整列（保守）
+        if (zs !== z0 || ze !== z1) full = false;
+      }
+      for (let z = zs; z <= ze; z++) {
+        const arr = this.grid.get(x * 1000 + z);
+        if (!arr) continue;
+        for (let i = 0; i < arr.length; i++) {
+          const c = arr[i];
+          if (c.stamp === st) continue;
+          c.stamp = st;
+          if (c.maxX < minX || c.minX > maxX || c.maxZ < minZ || c.minZ > maxZ) continue;
+          const kx = Math.max(x0, Math.floor(c.minX / CELL)), kz = Math.max(z0, Math.floor(c.minZ / CELL));
+          c.rayKey = (kx - x0) * zSpan + (kz - z0);
+          out.push(c);
+        }
+      }
+    }
+    if (!full && out.length > 1) out.sort(byRayOrder);
     return out;
   }
 
@@ -208,8 +265,7 @@ export class World {
   // 射线检测。filter: 'move' | 'bullet' | 'sight'
   // 返回最近命中 {t, nx,ny,nz, collider, exit}
   raycast(ox, oy, oz, dx, dy, dz, maxT, mode = 'bullet', out = {}) {
-    const ex = ox + dx * maxT, ez = oz + dz * maxT;
-    const cands = this.query(Math.min(ox, ex) - 0.1, Math.min(oz, ez) - 0.1, Math.max(ox, ex) + 0.1, Math.max(oz, ez) + 0.1);
+    const cands = this._rayCands(ox, oz, dx, dz, maxT);
     let best = maxT, hit = null;
     const r = this._r || (this._r = {});
     for (let i = 0; i < cands.length; i++) {
@@ -232,8 +288,7 @@ export class World {
 
   // 返回沿射线所有命中（按 t 排序），用于穿透
   raycastAll(ox, oy, oz, dx, dy, dz, maxT) {
-    const ex = ox + dx * maxT, ez = oz + dz * maxT;
-    const cands = this.query(Math.min(ox, ex) - 0.1, Math.min(oz, ez) - 0.1, Math.max(ox, ex) + 0.1, Math.max(oz, ez) + 0.1);
+    const cands = this._rayCands(ox, oz, dx, dz, maxT);
     const hits = [];
     const r = {};
     for (const c of cands) {
