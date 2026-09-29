@@ -187,6 +187,7 @@ export class HUD {
     this._endAward = null; // P3-2：结算军衔行仅变化时重写
     this._lastEnd = null;  // 语言切换时重绘结算页所需快照
     this._lastBoard = null;
+    this._initCaches();
     this.radarCtx = this.el.radar.getContext('2d');
     const touch = matchMedia('(pointer:coarse)').matches;
     this.opts = loadOpts(acquireStorage(), touch);
@@ -196,6 +197,45 @@ export class HUD {
     this.initBrand();
   }
   saveOpts() { saveOpts(acquireStorage(), this.opts); }
+
+  // ---------- 每帧写缓存：值比较命中即跳过 DOM 写（缓存全部实例私有，不跨实例共享） ----------
+  // _txt/_cls/_sty 以元素为键；只有 update/updateObjective 两条互斥写路径经助手写入，
+  // 值变化时（新局/模式/数据）自然重写，无需手动失效；仅语言变化需清文本缓存。
+  _initCaches() {
+    this._txt = new Map(); this._cls = new Map(); this._sty = new Map();
+    this._matchMemo = null; this._hintMemo = null; this._crossGap = null;
+    this._nadeKey = null; this._objBtnsShown = null;
+  }
+  txt(el, v) {
+    let m = this._txt.get(el);
+    if (m === undefined) this._txt.set(el, m = {});
+    if (m.v !== v) { m.v = v; el.textContent = v; }
+  }
+  htm(el, v) {
+    let m = this._txt.get(el);
+    if (m === undefined) this._txt.set(el, m = {});
+    if (m.h !== v) { m.h = v; el.innerHTML = v; }
+  }
+  cls(el, name, on) {
+    let m = this._cls.get(el);
+    if (m === undefined) this._cls.set(el, m = {});
+    if (m[name] !== on) { m[name] = on; el.classList.toggle(name, !!on); }
+  }
+  clsAll(el, v) {
+    let m = this._cls.get(el);
+    if (m === undefined) this._cls.set(el, m = {});
+    if (m._all !== v) { m._all = v; el.className = v; }
+  }
+  sty(el, prop, v) {
+    let m = this._sty.get(el);
+    if (m === undefined) this._sty.set(el, m = {});
+    if (m[prop] !== v) { m[prop] = v; el.style[prop] = v; }
+  }
+  // 语言切换失效（applyLocale 订阅回调调用）：文本/派生文案缓存清空，下一帧全部重写
+  invalidateTextCache() {
+    this._txt.clear();
+    this._matchMemo = null; this._hintMemo = null; this._nadeKey = null;
+  }
 
   // ---------- 语言服务（Task 9） ----------
   initLocale(injected) {
@@ -219,6 +259,7 @@ export class HUD {
   // 动态分段（地图/模式/预设）整体重建（先清空，旧节点随重建移除，监听器绑在新节点上）。
   applyLocale() {
     document.documentElement.lang = this.locale.getLocale();
+    this.invalidateTextCache(); // 局内动态文案（时钟目标/提示/背包等）下一帧按新语言重写
     this.applyStaticText();
     this.buildMapSeg();
     if (this.mapDesc) this.setMapInfo(this.mapDesc);
@@ -510,43 +551,60 @@ export class HUD {
   }
 
   // ---------- 局内 ----------
+  // 每帧路径分两类：动画（准星/命中/受击/闪光/进度）按帧写；文本与离散状态走
+  // 值比较缓存，稳定帧零 DOM 写。两条写同一 DOM 的路径（武器区 ↔ C4 区）共用
+  // 同一缓存且每帧互斥，故缓存与实际内容始终一致。
   update(dt, s) {
-    const e = this.el, t = this.t;
+    const e = this.el, t = this.t, p = this.g.player;
+    // 爆破目标视图先算（C4 携带决定武器区写不写），供本函数与 updateObjective 共用
+    const oh = objectiveHud(s.objective, {
+      myId: p && p.id, myTeam: s.myTeam, t,
+      actorOf: (id) => this.g.actors.find((a) => a.id === id) || null,
+    });
+    const c4 = !!(p && p.c4Selected && oh.active && s.alive);
     // 比分与时间
-    e.sBL.textContent = s.score.BL; e.sGR.textContent = s.score.GR;
-    const header = matchHeader(s, t);
-    e.sTime.textContent = header.clock;
-    e.sGoal.textContent = header.goal;
-    e.tBL.classList.toggle('mine', s.myTeam === 'BL'); e.tGR.classList.toggle('mine', s.myTeam === 'GR');
+    this.txt(e.sBL, s.score.BL); this.txt(e.sGR, s.score.GR);
+    const header = this._matchTexts(s);
+    this.txt(e.sTime, header.clock); this.txt(e.sGoal, header.goal);
+    this.cls(e.tBL, 'mine', s.myTeam === 'BL'); this.cls(e.tGR, 'mine', s.myTeam === 'GR');
     // 生命护甲
-    e.hpVal.textContent = Math.max(0, Math.ceil(s.hp));
-    e.arVal.textContent = Math.max(0, Math.ceil(s.armor));
-    e.hpBox.classList.toggle('low', s.hp <= 30 && s.alive);
-    // 弹药
+    this.txt(e.hpVal, Math.max(0, Math.ceil(s.hp)));
+    this.txt(e.arVal, Math.max(0, Math.ceil(s.armor)));
+    this.cls(e.hpBox, 'low', s.hp <= 30 && s.alive);
+    // 弹药（C4 在手时由 updateObjective 覆写同一批节点，这里整段跳过避免写后即覆写）
     const w = s.weapon;
-    if (w) {
+    if (w && !c4) {
       const d = w.def;
-      e.wName.textContent = d.hudName;
-      if (d.type === 'melee') { e.aMag.textContent = '∞'; e.aRes.textContent = ''; }
-      else if (d.type === 'grenade') { e.aMag.textContent = w.mag; e.aRes.textContent = ''; }
-      else { e.aMag.textContent = w.mag; e.aRes.textContent = '/ ' + w.reserve; }
-      e.aMag.classList.toggle('low', d.mag > 1 && w.mag <= Math.ceil(d.mag * 0.2));
+      this.txt(e.wName, d.hudName);
+      if (d.type === 'melee') { this.txt(e.aMag, '∞'); this.txt(e.aRes, ''); }
+      else if (d.type === 'grenade') { this.txt(e.aMag, w.mag); this.txt(e.aRes, ''); }
+      else { this.txt(e.aMag, w.mag); this.txt(e.aRes, '/ ' + w.reserve); }
+      this.cls(e.aMag, 'low', d.mag > 1 && w.mag <= Math.ceil(d.mag * 0.2));
       if (this.icons[d.id] && e.wIcon.dataset.id !== d.id) { e.wIcon.src = this.icons[d.id]; e.wIcon.dataset.id = d.id; }
-      e.aHint.textContent = w.reloading ? t('hud.reload')
-        : (d.mag > 1 && w.mag === 0 && w.reserve === 0 ? t('hud.ammoEmpty')
-          : (d.mag > 1 && w.mag === 0 ? t('hud.reloadHint') : ''));
+      // 提示文案按条件码记忆，避免每帧重复翻译组合
+      const code = w.reloading ? 1 : (d.mag > 1 && w.mag === 0 ? (w.reserve === 0 ? 2 : 3) : 0);
+      let hm = this._hintMemo;
+      const hintKey = this.locale.getLocale() + '|' + code;
+      if (!hm || hm.key !== hintKey) {
+        hm = this._hintMemo = { key: hintKey, text: code === 1 ? t('hud.reload') : code === 2 ? t('hud.ammoEmpty') : code === 3 ? t('hud.reloadHint') : '' };
+      }
+      this.txt(e.aHint, hm.text);
     }
     // 准星
     const showX = s.alive && !s.scoped && w && w.def.type !== 'sniper';
-    e.cross.style.display = showX ? '' : 'none';
+    this.sty(e.cross, 'display', showX ? '' : 'none');
     if (showX) {
       const gap = 4 + s.spreadPx;
-      e.cT.style.top = -(gap + 9) + 'px'; e.cB.style.top = gap + 'px';
-      e.cL.style.left = -(gap + 9) + 'px'; e.cR.style.left = gap + 'px';
+      if (this._crossGap !== gap) {
+        this._crossGap = gap;
+        e.cT.style.top = -(gap + 9) + 'px'; e.cB.style.top = gap + 'px';
+        e.cL.style.left = -(gap + 9) + 'px'; e.cR.style.left = gap + 'px';
+      }
     }
-    e.scope.classList.toggle('on', !!s.scoped && s.alive);
-    // 命中标记
-    if (this.hitT > 0) { this.hitT -= dt; e.hit.style.opacity = Math.min(1, this.hitT * 5); } else e.hit.style.opacity = 0;
+    this.cls(e.scope, 'on', !!s.scoped && s.alive);
+    // 命中标记（衰减中逐帧写，归零只补写一次）
+    if (this.hitT > 0) { this.hitT -= dt; this.sty(e.hit, 'opacity', String(Math.min(1, this.hitT * 5))); }
+    else this.sty(e.hit, 'opacity', '0');
     // 受击方向
     for (const d of this.dmgDirs) {
       d.t -= dt;
@@ -562,13 +620,14 @@ export class HUD {
     // 提示
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) e.toast.style.opacity = 0; }
     // 中央信息（阵亡/观战）由 updateObjective 统一处理
-    e.protect.textContent = s.protect > 0 && s.alive ? t('hud.protect', { sec: s.protect.toFixed(1) }) : '';
-    e.nameTip.textContent = s.aimName || ''; e.nameTip.className = s.aimTeam || '';
-    if (this.slotsT > 0) { this.slotsT -= dt; e.slots.style.opacity = Math.min(1, this.slotsT * 2); } else e.slots.style.opacity = 0;
+    this.txt(e.protect, s.protect > 0 && s.alive ? t('hud.protect', { sec: s.protect.toFixed(1) }) : '');
+    this.txt(e.nameTip, s.aimName || ''); this.clsAll(e.nameTip, s.aimTeam || '');
+    if (this.slotsT > 0) { this.slotsT -= dt; this.sty(e.slots, 'opacity', String(Math.min(1, this.slotsT * 2))); }
+    else this.sty(e.slots, 'opacity', '0');
     // 闪光白屏（s.blind，仅玩家存活时非 null；pointer-events:none 不拦截任何输入）
     const bl = updateBlindState(this.blind, s.blind);
-    e.blind.style.opacity = bl.opacity;
-    e.blind.classList.toggle('hidden', !bl.visible);
+    this.sty(e.blind, 'opacity', String(bl.opacity));
+    this.cls(e.blind, 'hidden', !bl.visible);
     // 投掷物背包条（slot 3 轮换 / 剩余量 / 当前高亮）
     this.updateNadeInfo();
     // 练习面板（非练习模式 s.practice = null → 隐藏）
@@ -580,36 +639,53 @@ export class HUD {
       e.endAward.classList.toggle('hidden', !award);
       this._endAward = award;
     }
-    this.updateObjective(dt, s);
+    this.updateObjective(s, oh, c4);
+  }
+  // 计时条文案：键含整秒/模式/目标/语言，同一秒内不重复翻译组合
+  _matchTexts(s) {
+    const bomb = s.objective;
+    const remaining = bomb ? bomb.timeLeft : s.timeLeft;
+    const sec = Math.max(0, Number.isFinite(remaining) ? Math.floor(remaining) : 0);
+    const n = bomb ? (bomb.winsNeeded ?? BOMB_DEFAULTS.winsNeeded) : s.goal;
+    const key = `${this.locale.getLocale()}|${s.modeName}|${n}|${sec}`;
+    let m = this._matchMemo;
+    if (!m || m.key !== key) {
+      const h = matchHeader(s, this.t);
+      m = this._matchMemo = { key, clock: h.clock, goal: h.goal };
+    }
+    return m;
   }
   updateNadeInfo() {
     const p = this.g.player, e = this.el.nadeInfo;
     const rows = p ? nadeSummary(p.grenadeBag, p.usedGrenades, p.inv[3] && p.inv[3].def.id) : [];
     const hidden = e.classList.contains('hidden');
     if (!rows.length) { if (!hidden) e.classList.add('hidden'); return; }
-    const html = rows.map((r) => `<span class="${r.current ? 'on' : ''}">${esc(this.wName(r.id, r.name))}<b>×${r.count}</b></span>`).join('');
-    if (hidden || html !== this._nadeHtml) { // P3-1：与练习 chips 同纪律，仅变化时重写 DOM
+    // 先比对不含翻译的紧凑键（型号×剩余×当前+语言），翻译与拼 HTML 仅在键变化时发生
+    let key = this.locale.getLocale() + '|';
+    for (const r of rows) key += r.id + r.count + (r.current ? 1 : 0) + '|';
+    if (hidden || key !== this._nadeKey) {
+      const html = rows.map((r) => `<span class="${r.current ? 'on' : ''}">${esc(this.wName(r.id, r.name))}<b>×${r.count}</b></span>`).join('');
       e.classList.remove('hidden');
       e.innerHTML = html;
-      this._nadeHtml = html;
+      this._nadeKey = key; this._nadeHtml = html; // _nadeHtml 保留供外部检查，键为准
     }
   }
   updatePractice(s) {
     const e = this.el, pr = s.practice;
-    if (!pr) { e.practice.classList.add('hidden'); return; }
-    e.practice.classList.remove('hidden');
-    e.prHits.textContent = this.t('hud.practiceHits', { n: pr.totalHits });
+    this.cls(e.practice, 'hidden', !pr);
+    if (!pr) return;
+    this.txt(e.prHits, this.t('hud.practiceHits', { n: pr.totalHits }));
     // P3-6 空态防御：开局 PracticeRuntime.current 可能为 null（game 侧种子化由接线会话处理），
     // 这里显示空武器名、无按钮高亮即可，不抛错
     const w = WEAPONS[pr.weapon && pr.weapon.current];
-    e.prWeapon.textContent = w ? this.wName(pr.weapon.current, w.name) : '';
+    this.txt(e.prWeapon, w ? this.wName(pr.weapon.current, w.name) : '');
     // 靶位：受击 flash>0 高亮 + 每靶命中数（DOM 写仅在变化时发生）
     const chips = (pr.targets || []).map((t) => `<i class="${t.flash > 0 ? 'on' : ''}">${esc(t.id)} ${t.hits}</i>`).join('');
     if (chips !== this._prChips) { e.prTargets.innerHTML = chips; this._prChips = chips; }
     const cur = (pr.weapon && pr.weapon.current) || '';
     for (const b of e.prGuns.querySelectorAll('button')) {
       const slot = pr.weapon && pr.weapon.slots[b.dataset.slot];
-      b.classList.toggle('on', b.dataset.w ? b.dataset.w === slot : WEAPONS[cur]?.slot === 3);
+      this.cls(b, 'on', b.dataset.w ? b.dataset.w === slot : WEAPONS[cur]?.slot === 3);
     }
   }
   practiceSwitch(slot, id) {
@@ -619,50 +695,50 @@ export class HUD {
     if (slot === 0 && id) { this.g.chooseLoadout(id); return; }
     p.weaponUpdate(0.05, { sw: slot }); // 真实切枪路径 → onSwitch → practice.selectWeapon
   }
-  // 爆破目标 HUD：只读渲染 s.objective（Game.objectiveView 提供的同一视图），不计算任何规则结果
-  updateObjective(dt, s) {
+  // 爆破目标 HUD：只读渲染 oh（update 已算好的 objectiveHud 视图），不计算任何规则结果；
+  // c4 为真时本函数拥有弹药区（update 跳过武器块），两路共用同一写缓存
+  updateObjective(s, oh, c4) {
     const e = this.el, p = this.g.player, t = this.t;
-    const oh = objectiveHud(s.objective, {
-      myId: p && p.id, myTeam: s.myTeam, t,
-      actorOf: (id) => this.g.actors.find((a) => a.id === id) || null,
-    });
-    e.objInfo.classList.toggle('hidden', !oh.active);
-    e.objRound.textContent = oh.round;
-    e.objAlive.textContent = oh.active ? t('hud.alive', { a: oh.aliveBL, b: oh.aliveGR }) : '';
-    e.c4State.textContent = oh.c4;
-    e.c4State.className = oh.c4 ? oh.c4Cls : 'hidden';
-    e.objHint.classList.toggle('hidden', !oh.hint);
-    e.objHint.textContent = oh.hint;
+    this.cls(e.objInfo, 'hidden', !oh.active);
+    this.txt(e.objRound, oh.round);
+    this.txt(e.objAlive, oh.active ? t('hud.alive', { a: oh.aliveBL, b: oh.aliveGR }) : '');
+    this.txt(e.c4State, oh.c4);
+    this.clsAll(e.c4State, oh.c4 ? oh.c4Cls : 'hidden');
+    this.cls(e.objHint, 'hidden', !oh.hint);
+    this.txt(e.objHint, oh.hint);
     if (oh.progress) {
-      e.objProg.classList.remove('hidden');
-      e.objProgFill.style.width = (oh.progress.frac * 100).toFixed(0) + '%';
-      e.objProgLbl.textContent = oh.progress.label;
-    } else e.objProg.classList.add('hidden');
+      this.cls(e.objProg, 'hidden', false);
+      this.sty(e.objProgFill, 'width', (oh.progress.frac * 100).toFixed(0) + '%');
+      this.txt(e.objProgLbl, oh.progress.label);
+    } else this.cls(e.objProg, 'hidden', true);
     // 5号槽 C4 虚拟槽位
     const carrying = !!(s.objective && s.objective.bomb && s.objective.bomb.carrierId != null && p && s.objective.bomb.carrierId === p.id);
-    e.slotC4.classList.toggle('hidden', !carrying);
-    e.slotC4.classList.toggle('on', carrying && !!(p && p.c4Selected));
-    // C4 在手时弹药区显示 C4
-    if (p && p.c4Selected && oh.active && s.alive) {
-      e.wName.textContent = t('hud.c4Item');
-      e.aMag.textContent = '—'; e.aMag.classList.remove('low');
-      e.aRes.textContent = '';
-      e.aHint.textContent = oh.hint || '';
-      e.wIcon.style.visibility = 'hidden';
-    } else e.wIcon.style.visibility = '';
+    this.cls(e.slotC4, 'hidden', !carrying);
+    this.cls(e.slotC4, 'on', carrying && !!(p && p.c4Selected));
+    // C4 在手时弹药区显示 C4（与 update 武器块互斥；aMag.low 归 false、图标隐藏）
+    if (c4) {
+      this.txt(e.wName, t('hud.c4Item'));
+      this.txt(e.aMag, '—'); this.cls(e.aMag, 'low', false);
+      this.txt(e.aRes, '');
+      this.txt(e.aHint, oh.hint || '');
+      this.sty(e.wIcon, 'visibility', 'hidden');
+    } else this.sty(e.wIcon, 'visibility', '');
     // 死亡观战（爆破模式）
     if (!s.alive && oh.active) {
-      e.center.classList.remove('hidden');
-      e.cBig.textContent = p && p.spectateName ? t('hud.spectatingName', { name: p.spectateName }) : t('hud.spectating');
-      e.cSmall.textContent = t('hud.spectateTip');
+      this.cls(e.center, 'hidden', false);
+      this.txt(e.cBig, p && p.spectateName ? t('hud.spectatingName', { name: p.spectateName }) : t('hud.spectating'));
+      this.txt(e.cSmall, t('hud.spectateTip'));
     } else if (!s.alive && s.respawnIn > 0) {
-      e.center.classList.remove('hidden');
-      e.cBig.innerHTML = s.killedBy || t('hud.dead');
-      e.cSmall.textContent = t('hud.respawnIn', { sec: s.respawnIn.toFixed(1) });
-    } else e.center.classList.add('hidden');
-    // 触屏目标交互按钮仅爆破模式显示
+      this.cls(e.center, 'hidden', false);
+      this.htm(e.cBig, s.killedBy || t('hud.dead'));
+      this.txt(e.cSmall, t('hud.respawnIn', { sec: s.respawnIn.toFixed(1) }));
+    } else this.cls(e.center, 'hidden', true);
+    // 触屏目标交互按钮仅爆破模式显示（状态变化才整组重写）
     const showObj = oh.active && s.alive;
-    for (const b of (this.g.touch && this.g.touch.objBtns) || []) b.style.display = showObj ? 'grid' : 'none';
+    if (this._objBtnsShown !== showObj) {
+      this._objBtnsShown = showObj;
+      for (const b of (this.g.touch && this.g.touch.objBtns) || []) b.style.display = showObj ? 'grid' : 'none';
+    }
   }
   slots(inv, cur) {
     const e = this.el.slots;
