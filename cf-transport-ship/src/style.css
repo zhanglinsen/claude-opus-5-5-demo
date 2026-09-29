@@ -367,3 +367,23 @@ html[lang="en"] .kf{font-size:13px}
 @media (prefers-reduced-motion:reduce){
   .lobby .navBtn,.lobby .seg button,.lobby .go{transition:none}
 }
+
+/* mobile:begin 手机端适配（.ultra/mobile-adaptation）。本块内每条规则的选择器必须以 html.is-touch 开头，
+   或位于 @media (pointer:coarse) 内；块外内容与基线逐字相同。各分区只由对应 lane 修改自己哨兵之间的内容。 */
+
+/* mobile:shell:begin 任务 6：视口与页面壳 */
+/* mobile:shell:end */
+
+/* mobile:input:begin 任务 3：#touch 与按钮 */
+/* mobile:input:end */
+
+/* mobile:menu:begin 任务 4：新增按钮 */
+/* mobile:menu:end */
+
+/* mobile:orientation:begin 任务 7：横屏遮罩与全屏 */
+/* mobile:orientation:end */
+
+/* mobile:hud:begin 任务 8：小屏 HUD 避让 */
+/* mobile:hud:end */
+
+/* mobile:end */

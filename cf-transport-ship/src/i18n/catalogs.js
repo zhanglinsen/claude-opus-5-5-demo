@@ -296,6 +296,14 @@ export const CATALOGS = {
     'touch.crouch': '蹲',
     'touch.swap': '切',
     'touch.scope': '镜',
+    // 手机端适配（.ultra/mobile-adaptation）：菜单/记分板/配装/检视/全屏与横屏引导
+    'touch.menu': '菜单',
+    'touch.board': '比分',
+    'touch.loadout': '配装',
+    'touch.inspect': '检视',
+    'touch.fullscreen': '全屏',
+    'touch.rotate': '请将手机横屏后继续',
+    'touch.addToHome': 'iPhone：点分享按钮，选择“添加到主屏幕”，可获得全屏体验',
 
     // Task 10：战斗消息 / 报点 / 模式提示 / 加载步骤（game.js 玩家可见文本）
     'player.self': '我',
@@ -622,6 +630,14 @@ export const CATALOGS = {
     'touch.crouch': 'CROUCH',
     'touch.swap': 'SWAP',
     'touch.scope': 'SCOPE',
+    // Mobile adaptation (.ultra/mobile-adaptation): menu / scoreboard / loadout / inspect / fullscreen and rotate guard
+    'touch.menu': 'MENU',
+    'touch.board': 'SCORE',
+    'touch.loadout': 'GEAR',
+    'touch.inspect': 'INSPECT',
+    'touch.fullscreen': 'FULL',
+    'touch.rotate': 'Rotate your phone to landscape to continue',
+    'touch.addToHome': 'iPhone: tap Share, then "Add to Home Screen" for a fullscreen experience',
 
     // Task 10: battle messages / callouts / mode toasts / loading steps (game.js player-visible text)
     'player.self': 'You',

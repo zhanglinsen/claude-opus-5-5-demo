@@ -31,7 +31,7 @@ Effort/complexity rationale: 0.5–1 天；假设不需要真机即可用桩覆�
 - 任务 2 的用例 1–5 转绿。
 - `cd cf-transport-ship && nice -n 19 node --test --test-concurrency=1 tests/unit/touch-i18n.test.mjs tests/unit/mobile/desktop-equivalence.test.mjs tests/unit/mobile/touch-input.test.mjs` 全绿（含现有测试无修改）。
 - 多指用例：摇杆 + 视角 + 开火同时按下，三者状态互不覆盖；抬起其一不影响其余。
-- 边界：`computeLayout` 在 844×390、932×430、667×375、800×360、390×844 下所有按钮都在视口内、互不重叠、边长 ≥44。
+- 边界：`computeLayout` 在横屏 844×390、932×430、667×375、800×360 下所有按钮都在视口内、互不重叠、边长 ≥44；竖屏 390×844 只要求都在视口内且不抛错（竖屏对局由任务 7 强制暂停，不要求互不重叠）。
 - `node scripts/check-mobile-isolation.mjs` 退出码 0（`player.js` 未被触碰）。
 
 ## Trace
@@ -41,6 +41,8 @@ Accepted gaps: G-01（浏览器/真机验证后置）
 
 ## Change Log
 2026-09-30 创建。来源：规格评估 E3/E4/E5/E6/E14。
+2026-09-30 更正验收：竖屏 390×844 不再要求按钮互不重叠（现有偏移量在 390 宽下必然与摇杆重叠，且竖屏对局被任务 7 强制暂停）。来源：并发调度设计时的几何核对。
+2026-09-30 调度拆分（不改依赖表）：布局纯函数 `layout.js` 与骨架由 lane L0 先行，`touch.js` 集成由 lane L3b 完成，见 `dispatch/README.md`。
 
 ## Completion
 未完成。

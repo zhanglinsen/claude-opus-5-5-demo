@@ -26,7 +26,7 @@ Technical notes:
 Effort/complexity rationale: 0.5–1 天；假设 HUD 无需 DOM 改动即可通过 CSS 避让；如发现必须改 `hud.js` 才能做到，**停下并询问用户**，不得自行放宽；复杂度 5。
 
 ## Acceptance
-- `layout-geometry.test.mjs`：在 844×390、932×430、667×375、800×360、390×844 下，所有触屏按钮与摇杆底座在视口内（含安全区）、互不重叠、边长 ≥44px、不进入屏幕中央准星区。
+- `layout-geometry.test.mjs`：在横屏 844×390、932×430、667×375、800×360 下，所有触屏按钮与摇杆底座在视口内（含安全区）、互不重叠、边长 ≥44px、不进入屏幕中央准星区；竖屏 390×844 只要求在视口内且不抛错（竖屏对局由任务 7 强制暂停）。
 - `cd cf-transport-ship && nice -n 19 node --test --test-concurrency=1 tests/unit/mobile/layout-geometry.test.mjs tests/unit/mobile/shell.test.mjs tests/unit/touch-i18n.test.mjs` 全绿。
 - 标记块之外的 CSS 与基线逐字相同（沿用任务 6 的测试）。
 - `node scripts/check-mobile-isolation.mjs` 退出码 0。
@@ -39,6 +39,7 @@ Accepted gaps: G-01
 
 ## Change Log
 2026-09-30 创建。来源：规格评估 E9/E10。
+2026-09-30 更正验收：竖屏 390×844 不再要求互不重叠，理由同任务 3。`layout-geometry.test.mjs` 的基础部分由 lane L0 随 `layout.js` 一并提供，本任务在其上补 HUD 避让与安全区用例，见 `dispatch/README.md`。
 
 ## Completion
 未完成。（完成时在此补充 HUD 元素清单与避让表）
