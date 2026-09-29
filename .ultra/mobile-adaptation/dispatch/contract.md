@@ -80,8 +80,10 @@ export function attach(game, touch) { /* 注册监听与按钮 */ return detach;
 | `inspect` | `touch.inspect` | `player.pressed.add('KeyF')` |
 | `slot1`…`slot4` | `'1'`…`'4'`（固定） | `player.pressed.add('Digit1'…'Digit4')` |
 | `fullscreen` | `touch.fullscreen` | `requestFullscreen({ navigationUI: 'hide' })` + 尽力 `screen.orientation.lock('landscape')` |
-| `scope`（既有） | | 按下 `mouse.r = true; mouse.rp = true`；抬起/取消 `mouse.r = false`（镜像右键：步枪开镜、刀重击） |
-| `fire`（既有） | | 保持原行为，另在按下时置 `mouse.lp = true`（镜像左键：死亡后切观战队友） |
+| `scope`（既有，**L3b 在 touch.js 内实现，L4 不碰**） | | 按下 `mouse.r = true; mouse.rp = true`；抬起/取消 `mouse.r = false`（镜像右键：步枪开镜、刀重击） |
+| `fire`（既有，**L3b 在 touch.js 内实现，L4 不碰**） | | 保持原行为，另在按下时置 `mouse.lp = true`（镜像左键：死亡后切观战队友） |
+
+L4 只负责上表中**新增**的 `menu board loadout inspect slot1-4`；`fullscreen` 归 L7。既有按钮的行为变更一律归 L3b。
 
 ## 5. i18n 键（已加好，zh/en 对等；新增文案不得再改 `catalogs.js`）
 
@@ -92,7 +94,7 @@ export function attach(game, touch) { /* 注册监听与按钮 */ return detach;
 - 只改自己分区（`/* mobile:<区>:begin */` 与 `:end */` 之间）；不要动别的分区，也不要动块外内容。
 - 块内每条规则的选择器必须以 `html.is-touch` 开头，或位于 `@media (pointer:coarse)` 内；桌面渲染零变化。
 - `touch-action: none` 只允许出现在 `#c`、`#touch` 上；大厅/暂停等 `.screen` 需要触摸滚动。
-- `html.is-touch` 类由 L3b 在 `touch.js` 里于 `enabled` 时加到 `document.documentElement`。
+- `html.is-touch` 类由 L3b 在 `touch.js` 里于 `enabled` 时加到 `document.documentElement`；iOS 的 `gesturestart` `preventDefault`（禁捏合缩放）与画布 `touchstart` 非 passive 的 `preventDefault`（阻断合成鼠标事件）同样由 L3b 落地，L6 只提供 CSS 与 meta。
 
 ## 7. 状态字段（只读参考，来自 `player.js`）
 
