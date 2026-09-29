@@ -38,6 +38,15 @@ def proxy_counter():
         return None
 
 
+def usable_accounts():
+    """`zcode-kit accounts health` 末尾的 `usable: N of M`（只读本地状态，不向上游发请求）；读不到返回 None。"""
+    try:
+        m = re.search(r'usable:\s*(\d+)\s+of\s+\d+', run(['zcode-kit', 'accounts', 'health']))
+        return int(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
 def other_projects_running():
     """其它项目（market-lab）的 GLM 工作树里有进程在跑。"""
     try:
@@ -124,6 +133,15 @@ def main():
         reasons.append('market-lab 的 lane 在跑')
     else:
         print('  market-lab：无进程')
+    # 账号是否可用：套餐窗口限流时代理会把账号标为 exhausted，即使余额充足也会返回 503（2026-09-30 04:0x 实测）。
+    usable = usable_accounts()
+    if usable is None:
+        print('  账号可用数：读取失败 → 按不可用处理')
+        reasons.append('无法读取账号状态')
+    else:
+        print(f'  账号可用数：{usable} / 4')
+        if usable == 0:
+            reasons.append('所有账号 exhausted（窗口限流，等待恢复；不要重试）')
     if reasons:
         idle = False
 

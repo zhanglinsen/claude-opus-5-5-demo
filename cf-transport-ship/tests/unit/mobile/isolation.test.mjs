@@ -239,10 +239,13 @@ test('CLI：退出码 0 / 1 / 2', () => {
   assert.equal(cli('--lane').status, 2, '缺少参数值');
 });
 
-test('真实仓库：当前分支相对性能基线没有越界改动（守卫的实际用例）', () => {
-  // 仓库外运行（如源码包）时没有该基线，跳过而不是假装通过
+test('真实仓库：当前分支相对性能基线没有越界改动（守卫的实际用例）', (t) => {
+  // 仓库外运行（如源码包/浅克隆）时没有该基线：显式跳过（在报告里可见），而不是静默通过；其它错误照常抛出
   const here = path.dirname(SCRIPT);
   let r;
-  try { r = run({ cwd: here }); } catch (e) { return; }
+  try { r = run({ cwd: here }); } catch (e) {
+    if (/ref 不存在|不在 git 仓库内/.test(e.message)) return t.skip(`无法检查真实仓库：${e.message}`);
+    throw e;
+  }
   assert.deepEqual(r.violations, [], `相对性能基线有越界改动：\n${r.violations.join('\n')}`);
 });

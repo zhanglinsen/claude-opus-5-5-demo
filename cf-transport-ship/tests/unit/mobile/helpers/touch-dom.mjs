@@ -76,6 +76,7 @@ export function makeTouchControls({ width = 844, height = 390, coarse = true, se
       return { x, y, w, h };
     },
     // 先 destroy（撤销 src/mobile/* 模块：清除轮询定时器与遮罩），再还原全局；否则遗留的 setInterval 会让 node 进程退不出去
-    cleanup() { try { touch.destroy(); } catch (e) { /* 忽略 */ } env.restore(); },
+    // 不吞异常：destroy 若抛错应让测试失败，而不是被清理逻辑掩盖。env.restore 放 finally，保证全局一定还原
+    cleanup() { try { touch.destroy(); } finally { env.restore(); } },
   };
 }

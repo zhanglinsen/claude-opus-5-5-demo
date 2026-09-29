@@ -311,6 +311,7 @@ export class TouchControls {
   destroy() {
     if (this._unsubLocale) { this._unsubLocale(); this._unsubLocale = null; }
     if (this._detachMobile) { this._detachMobile(); this._detachMobile = null; }
+    if (this._probe && this._probe.remove) { this._probe.remove(); this._probe = null; } // 安全区探针元素
     this.locale = null;
   }
 }
