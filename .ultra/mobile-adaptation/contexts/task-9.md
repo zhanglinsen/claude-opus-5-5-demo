@@ -43,4 +43,7 @@ Accepted gaps: G-01
 2026-09-30 创建。来源：规格验证策略；用户“不能影响性能优化任务”。
 
 ## Completion
-未完成。
+完成于 2026-09-30（脚本已写好；**脚本主体尚未运行**）。GLM 首次执行 21 轮后撞 `400 [1005] exceed quota limit`，无产出，改由协调者完成。
+- 证据：`accept-mobile-gate.test.mjs` 13 项通过——没有 `MOBILE_E2E_GPU_FREE=1`（或值不是恰好 `1`）时退出码 3、给出三个前置条件、5 秒内返回、不创建产物目录；未知参数也先按门拒绝；静态检查 playwright 与 serve.mjs 只能动态导入且在门之后；`checkLayout` 等纯函数（含出屏/过小/重叠/进入准星区各失败路径）；脚本引用的 `data-act` 都属于 `layout.js` 的 `ACTS`、引用的元素 id 在 `hud.js`/`orientation.js`/`game.js`/`actor.js` 里真实存在（防止选择器与实现漂移）。`node --check` 语法检查通过。
+- **没有做的**：以 `MOBILE_E2E_GPU_FREE=1` 启动脚本——测试里刻意不做（`dist/` 若存在会真的拉起浏览器，占用性能任务的 GPU）。所以 Playwright 部分的选择器、等待条件、`touchscreen.tap` 在软渲染下的时序等**全部未经运行验证**，首次真实运行很可能需要调试。
+- 覆盖内容（运行后才有结果）：4 个横屏 + 1 个竖屏视口；触控件与 HUD 真实包围盒；菜单暂停/继续；记分板；touchcancel；E14 及其正对照；旋转遮罩；切后台；竖屏大厅点开始被拦。无法在 headless Chromium 验证的项在脚本末尾与 `device-checklist.md` 里列出。
