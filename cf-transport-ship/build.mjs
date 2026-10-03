@@ -10,8 +10,15 @@
 //                                         默认三目标 mock 产物不写不动。ID 缺失/为空在
 //                                         构建期明确失败，绝不产出伪正式包。
 //                                         与 --all/--dev/--target= 混用直接失败（见下）。
+//   node build.mjs --map-set=classic|original  地图集开关（默认 classic，可与上述参数组合）：
+//                                         classic=沙漠灰+运输船（经典复刻，接平台 SDK 上架
+//                                         试用的默认图集）；original=赤霞集市+雾港码头（原创）。
+//                                         产物 <head> 内嵌 <meta name="map-set"> 自证图集。
 // 目标以 __BUILD_TARGET__ define 注入：minify 将非目标分支整枝剔除，
 // 平台适配器与官方 SDK 脚本地址只存在于对应目标的包里（三平台互不交叉）。
+// 地图集以 __MAP_SET__ define 注入（与目标解耦的项目级开关，玩家无感知）：
+// 决定注册表可见地图、页面元数据与大厅预览图；切图集=重建+重传同一平台游戏，
+// 旧存档里的失效地图 id 由 resolveMapId 自动回退。
 // 默认三构建包内不含任何真实平台 ID；--configured 包内联公开客户端 ID（非服务端密钥）。
 import * as esbuild from 'esbuild';
 import fs from 'node:fs';
@@ -26,6 +33,15 @@ const argTarget = (() => {
   const a = process.argv.find((s) => s.startsWith('--target='));
   return a ? a.slice('--target='.length) : null;
 })();
+// 地图集开关（默认 classic：经典复刻双图接平台 SDK 上架试用；--map-set=original 切回原创双图）。
+// 与 --all/--target=/--configured 正交可组合：开关作用于本次构建的所有目标。
+// --maps 为兼容别名；同名重复、别名混用或缺值均在写产物前拒绝。
+const mapArgs = process.argv.slice(2).filter((s) => /^(--map-set|--maps)(=|$)/.test(s));
+if (mapArgs.length > 1 || (mapArgs.length === 1 && !/^--(?:map-set|maps)=(classic|original)$/.test(mapArgs[0]))) {
+  console.error('--map-set 必须且只能指定一次：--map-set=classic|original（兼容 --maps=classic|original，不能混用）');
+  process.exit(1);
+}
+const mapSet = mapArgs.length ? mapArgs[0].split('=')[1] : 'classic';
 const all = process.argv.includes('--all');
 const dev = process.argv.includes('--dev');
 const configured = process.argv.includes('--configured');
@@ -53,19 +69,37 @@ for (const t of targets) {
   }
 }
 
-// 公开页面静态元数据：平台版不得出现原作名称/标志性文案；离线版保留原地图名称。
+// 公开页面静态元数据：按 目标×图集 取值。平台版任何图集都不得出现原作品牌词
+// （穿越火线/CROSSFIRE/原作阵营名）；地图名按图集如实描述——original 用原创英文名，
+// classic（上架试用默认）用经典地图英文名。
 const PAGE_META = {
-  offline: {
-    title: '沙漠灰 / 运输船 · 前线行动 3D',
-    description: '前线行动 3D：沙漠灰与运输船双地图，支持爆破、团队竞技、练习及 AI 对战。',
+  classic: {
+    offline: {
+      title: '沙漠灰 / 运输船 · 前线行动 3D',
+      description: '前线行动 3D：沙漠灰与运输船双地图，支持爆破、团队竞技、练习及 AI 对战。',
+    },
+    y8: {
+      title: 'Desert Grey & Transport Ship · Frontline Ops 3D',
+      description: 'Classic web 3D frontline maps: bomb, team deathmatch and practice modes with AI bots. Playable in the browser.',
+    },
+    gamemonetize: {
+      title: 'Desert Grey & Transport Ship · Frontline Ops 3D',
+      description: 'Classic web 3D frontline maps: bomb, team deathmatch and practice modes with AI bots. Playable in the browser.',
+    },
   },
-  y8: {
-    title: 'Chixia Bazaar & Fog Harbor Quay · Frontline Ops 3D',
-    description: 'Original web 3D frontline maps: bomb, team deathmatch and practice modes with AI bots. Playable in the browser.',
-  },
-  gamemonetize: {
-    title: 'Chixia Bazaar & Fog Harbor Quay · Frontline Ops 3D',
-    description: 'Original web 3D frontline maps: bomb, team deathmatch and practice modes with AI bots. Playable in the browser.',
+  original: {
+    offline: {
+      title: '赤霞集市 / 雾港码头 · 前线行动 3D',
+      description: '前线行动 3D：赤霞集市与雾港码头原创双地图，支持爆破、团队竞技、练习及 AI 对战。',
+    },
+    y8: {
+      title: 'Chixia Bazaar & Fog Harbor Quay · Frontline Ops 3D',
+      description: 'Original web 3D frontline maps: bomb, team deathmatch and practice modes with AI bots. Playable in the browser.',
+    },
+    gamemonetize: {
+      title: 'Chixia Bazaar & Fog Harbor Quay · Frontline Ops 3D',
+      description: 'Original web 3D frontline maps: bomb, team deathmatch and practice modes with AI bots. Playable in the browser.',
+    },
   },
 };
 
@@ -76,36 +110,34 @@ const FAVICON_FILE = {
   y8: 'src/assets/studio/infinity-en-transparent.png',
   gamemonetize: 'src/assets/studio/infinity-en-transparent.png',
 };
-// 小尺寸场景截图仅用于静态大厅背景：按目标内联各自的两张图，避免
-// 首屏创建 WebGL，也避免平台包带入离线经典地图影像。
+// 小尺寸场景截图仅用于静态大厅背景：按图集内联各自的两张图，避免
+// 首屏创建 WebGL，也避免包内带入未采用图集的地图影像。
 const MENU_PREVIEWS = {
-  offline: ['desert-grey', 'transport-ship'],
-  y8: ['platform-desert', 'platform-harbor'],
-  gamemonetize: ['platform-desert', 'platform-harbor'],
+  classic: ['transport-ship', 'desert-grey'],
+  original: ['platform-desert', 'platform-harbor'],
 };
 
-// 配置包 manifest：如实标记——ID 已配置（mock=false），但真实平台审核/广告未验证、
-// 且平台包仍内嵌未开放的经典地图数据，两者都不允许作为可提交版对外发布。
-function configuredManifest(target, ids) {
+// 已内联公开客户端 ID 的真实 SDK 试用包；允许平台试用上传，正式发布验证仍待完成。
+function configuredManifest(target, ids, mapSet) {
   return {
     target,
     mock: false,
     idsConfigured: true,
     ids: { ...ids },
+    mapSet,
     platformReview: 'pending',
     adsVerified: false,
-    submissionAllowed: false,
+    trialUploadAllowed: true,
+    releaseVerificationPending: true,
     blockers: [
-      'Real platform SDK review / ad serving not yet verified with the platform dashboard — do not submit this package publicly.',
-      'This platform build still embeds non-released classic map data; asset removal is a separate pending task.',
+      'Real platform SDK review / ad serving not yet verified with the platform dashboard; release verification is pending.',
     ],
     generatedAt: new Date().toISOString(),
   };
 }
 
-// 配置包 README（进 ZIP 根目录）：ID 已内联（无需宿主注入）、mock=false、
-// 仍不可提交的如实说明。与默认 mock 包 README（"no real App ID"）措辞刻意区分。
-function configuredPackageReadme(target, ids) {
+// 配置包 README：真实客户端 ID 已内联，可平台试用上传，正式发布审核和广告验证待完成。
+function configuredPackageReadme(target, ids, mapSet) {
   const idLines = target === 'y8'
     ? `- Y8 App ID: \`${ids.appId}\`\n- Y8 Game ID: \`${ids.gameId}\``
     : `- GameMonetize Game ID: \`${ids.gameId}\``;
@@ -122,10 +154,11 @@ ${idLines}
 These are public browser-side SDK IDs, not server secrets. \`mock = false\`: the real platform adapter
 is created at runtime (SDK failure still degrades safely to offline behavior).
 
-## Status — NOT for public submission
+## Status — platform trial upload allowed; release verification pending
 - Real platform SDK review and ad serving have NOT been verified on the platform dashboard yet.
 - Ads are only requested at natural breakpoints (match end / menu return); no ad is requested at load time.
-- This platform build still embeds non-released classic map data; asset removal is a separate pending task.
+- Selected map set: ${mapSet} — ${mapSet === 'classic' ? 'Desert Grey / Transport Ship' : 'Chixia Bazaar / Fog Harbor Quay'}.
+- Classic map data is intentionally included when selected. Shared metadata/textures may still contain unused map resources; package size cleanup is outside this change.
 
 ## Isolation
 This ${target} build loads only the official ${target} SDK; no other platform's SDK is referenced.
@@ -171,6 +204,7 @@ for (const target of targets) {
     define: {
       'process.env.NODE_ENV': '"production"',
       __BUILD_TARGET__: JSON.stringify(target),
+      __MAP_SET__: JSON.stringify(mapSet),
     },
   });
   const js = res.outputFiles[0].text;
@@ -182,7 +216,7 @@ for (const target of targets) {
     };</script><script>/*__JS__*/</script>`)
     : tpl;
   const favicon = `data:image/png;base64,${fs.readFileSync(FAVICON_FILE[target]).toString('base64')}`;
-  const menuPreviews = MENU_PREVIEWS[target].map((id) => {
+  const menuPreviews = MENU_PREVIEWS[mapSet].map((id) => {
     const encoded = fs.readFileSync(`src/assets/menu/${id}.jpg`).toString('base64');
     return `.lobby[data-map="${id}"]{--arena-image:url(data:image/jpeg;base64,${encoded})}`;
   }).join('\n');
@@ -190,12 +224,12 @@ for (const target of targets) {
     .replace('/*__FAVICON__*/', () => favicon)
     .replace('/*__CSS__*/', () => `${css}\n${menuPreviews}`)
     .replace('/*__JS__*/', () => js.replace(/<\/script>/g, '<\\/script>'));
-  if (target !== 'offline') {
-    const meta = PAGE_META[target];
-    html = html
-      .replace(/<title>.*?<\/title>/s, `<title>${meta.title}</title>`)
-      .replace(/(<meta name="description" content=").*?(">)/s, `$1${meta.description}$2`);
-  }
+  // 页面元数据按 目标×图集 取值；并注入 map-set 标记让包自证图集（上架核对与产物测试用）
+  const meta = PAGE_META[mapSet][target];
+  html = html
+    .replace(/<title>.*?<\/title>/s, `<title>${meta.title}</title>`)
+    .replace(/(<meta name="description" content=").*?(">)/s, `$1${meta.description}$2`)
+    .replace('</head>', `<meta name="map-set" content="${mapSet}"></head>`);
   const dir = configured ? path.join('dist', 'configured', target) : OUT_DIR[target];
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'index.html'), html);
@@ -203,10 +237,10 @@ for (const target of targets) {
 
   // 平台 ZIP：根目录 index.html（+ README/manifest）；离线版不打包
   if (target !== 'offline') {
-    const readme = configured ? configuredPackageReadme(target, configuredIds[target]) : packageReadme(target);
+    const readme = configured ? configuredPackageReadme(target, configuredIds[target], mapSet) : packageReadme(target);
     const manifest = configured
-      ? JSON.stringify(configuredManifest(target, configuredIds[target]), null, 2) + '\n'
-      : JSON.stringify({ target, mock: true, note: 'No real App/Game ID embedded — inject via window.__PLATFORM_IDS__.', generatedAt: new Date().toISOString() }, null, 2) + '\n';
+      ? JSON.stringify(configuredManifest(target, configuredIds[target], mapSet), null, 2) + '\n'
+      : JSON.stringify({ target, mapSet, mock: true, note: 'No real App/Game ID embedded — inject via window.__PLATFORM_IDS__.', generatedAt: new Date().toISOString() }, null, 2) + '\n';
     const zip = makeZip([
       { name: 'index.html', data: html },
       { name: 'README.md', data: readme },
@@ -215,7 +249,7 @@ for (const target of targets) {
     fs.writeFileSync(path.join(dir, ZIP_NAME[target]), zip);
     console.log(`built ${dir}/${ZIP_NAME[target]}`, (zip.length / 1024).toFixed(1) + ' KB');
     if (configured) {
-      console.warn(`[configured] ${target}: 已内联本游戏公开平台 ID（mock=false）。真实平台审核/广告未验证，且包内仍含未开放经典地图数据——此包不可作为公开提交版。`);
+      console.warn(`[configured] ${target} (${mapSet}): 已内联本游戏公开平台 ID（mock=false）。允许上传平台试用；真实平台审核/广告未验证，正式发布验证待完成。`);
     }
   }
 }

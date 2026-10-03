@@ -90,27 +90,34 @@ try {
   check('离线沙漠灰按需加载', await desertPage.evaluate(() => window.__game.mapDesc.id === 'desert-grey' && !!window.__game.map));
   await desertPage.close();
 
-  // 共用启动主控还用于两种平台包；各用一次 mock 包验证大厅/原创图的冷启动。
-  for (const [target, map] of [['y8', 'platform-desert'], ['gamemonetize', 'platform-harbor']]) {
+  // 共用启动主控还用于两种平台包；各用一次 mock 包验证大厅冷启动。
+  // 期望地图按包内 <meta name="map-set"> 推导（classic：沙漠灰默认+运输船；original：赤霞集市+雾港码头）。
+  const SET_MAPS = {
+    classic: ['desert-grey', 'transport-ship'],
+    original: ['platform-desert', 'platform-harbor'],
+  };
+  for (const target of ['y8', 'gamemonetize']) {
     const platformPage = await browser.newPage({ viewport: { width: 960, height: 540 } });
     const platformErrors = [];
     platformPage.on('pageerror', (e) => platformErrors.push(String(e)));
     await platformPage.goto(`http://127.0.0.1:${PORT}/${target}/index.html?nolock=1`, { waitUntil: 'load' });
     await platformPage.waitForFunction(() => window.__game && !document.querySelector('#menu').classList.contains('hidden'), null, { timeout: 15000 });
-    check(`${target}: 原创图大厅先显示且没有 WebGL`, await platformPage.evaluate(() => {
+    const mapSet = await platformPage.evaluate(() => document.querySelector('meta[name="map-set"]')?.content || null);
+    const maps = SET_MAPS[mapSet];
+    check(`${target}: 图集元数据合法（${mapSet}）`, !!maps, mapSet || 'missing meta');
+    const [defMap, altMap] = maps || SET_MAPS.classic;
+    check(`${target}: 大厅先显示且没有 WebGL`, await platformPage.evaluate((id) => {
       const g = window.__game;
-      return g.mapDesc.id === 'platform-desert' && !g.renderer && !g.world && !!window.__PLATFORM_MOCK__;
-    }));
-    if (map !== 'platform-desert') {
-      await platformPage.click(`#mapSeg button[data-v="${map}"]`);
-      check(`${target}: 未建图时切原创地图`, await platformPage.evaluate((id) => window.__game.mapDesc.id === id && !window.__game.renderer, map));
-    }
+      return g.mapDesc.id === id && !g.renderer && !g.world && !!window.__PLATFORM_MOCK__;
+    }, defMap));
+    await platformPage.click(`#mapSeg button[data-v="${altMap}"]`);
+    check(`${target}: 未建图时切图集内另一张`, await platformPage.evaluate((id) => window.__game.mapDesc.id === id && !window.__game.renderer, altMap));
     await platformPage.click('#btnStart');
     await platformPage.waitForFunction(() => window.__game?.playing === true, null, { timeout: 60000 });
-    check(`${target}: 点击后加载原创图`, await platformPage.evaluate((id) => {
+    check(`${target}: 点击后加载所选图`, await platformPage.evaluate((id) => {
       const g = window.__game;
       return g.mapDesc.id === id && !!g.renderer && !!g.world;
-    }, map));
+    }, altMap));
     check(`${target}: 无脚本异常`, platformErrors.length === 0, platformErrors.join(' | '));
     await platformPage.close();
   }

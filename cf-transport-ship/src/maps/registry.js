@@ -1,16 +1,31 @@
 // 地图注册表（纯数据 + 解析函数，不依赖 three / DOM，可在 node 下测试）
 // 每张地图描述：元信息、寻路范围、小地图参数、菜单镜头、AI 常量与换弹出生区判定。
-// 编译目标（Task 11 / US-05）决定可用地图集：
-//   offline        离线版：旧 desert-grey / transport-ship（保留原体验与原名称）
-//   y8/gamemonetize 平台版：原创 platform-desert / platform-harbor（公开文案走 i18n，
-//                  不出现原作品牌名）；内部稳定 id 不变。
-// esbuild 以 define 注入 __BUILD_TARGET__；Node 测试环境无此全局，回退 offline。
+// 编译目标（Task 11 / US-05）决定平台适配；可用地图集由独立的"地图集开关"决定：
+//   classic（默认） 沙漠灰 desert-grey + 运输船 transport-ship：经典复刻图集，
+//                  接平台 SDK 上架试用的默认图集（平台对经典复刻内容的审核结果待定）
+//   original        赤霞集市 platform-desert + 雾港码头 platform-harbor：原创图集
+//                  （公开文案走 i18n，不出现原作品牌名）；内部稳定 id 不变。
+// 两版共用枪械/军衔/装备/设置与平台适配，存档键不变；旧存档里的失效地图 id 由
+// resolveMapId 自动回退到当前图集有效地图。
+// esbuild 以 define 注入 __BUILD_TARGET__ 与 __MAP_SET__（build.mjs --map-set=）；
+// Node 测试环境无此全局时分别回退 offline / classic。
 
 import { PLATFORM_DESERT_DESCRIPTOR } from './platform-desert/descriptor.js';
 import { PLATFORM_HARBOR_DESCRIPTOR } from './platform-harbor/layout.js';
 
 export const BUILD_TARGET = typeof __BUILD_TARGET__ !== 'undefined' ? __BUILD_TARGET__ : 'offline';
-export const TARGET_SET = BUILD_TARGET === 'offline' ? 'offline' : 'platform';
+
+// 地图集开关：与编译目标解耦的项目级开关（仅构建期可见，玩家无感知）。
+// 顺序即菜单/回退优先级；未知图集一律回退 classic。
+export const MAP_SETS = Object.freeze({
+  classic: ['transport-ship', 'desert-grey'],
+  original: ['platform-desert', 'platform-harbor'],
+});
+
+// 纯函数：图集合法性归一（含 __MAP_SET__ 缺失/拼错的回退），node 可测
+export function normalizeMapSet(v) { return v === 'original' ? 'original' : 'classic'; }
+
+export const MAP_SET = normalizeMapSet(typeof __MAP_SET__ !== 'undefined' ? __MAP_SET__ : null);
 
 const ALL_MAPS = {
   'transport-ship': {
@@ -129,23 +144,17 @@ const ALL_MAPS = {
   },
 };
 
-// 各编译目标可见地图集（顺序即菜单/回退优先级）
-export const MAP_TARGET_SETS = Object.freeze({
-  offline: ['transport-ship', 'desert-grey'],
-  platform: ['platform-desert', 'platform-harbor'],
-});
-
-// 按目标集合过滤地图表（纯函数，node 可测）；未知集合回退 offline
-export function mapsForTarget(target) {
-  const ids = MAP_TARGET_SETS[target === 'offline' ? 'offline' : 'platform'];
+// 按图集过滤地图表（纯函数，node 可测）；未知图集回退 classic
+export function mapsForSet(set) {
+  const ids = MAP_SETS[normalizeMapSet(set)];
   return Object.fromEntries(ids.filter((id) => ALL_MAPS[id]).map((id) => [id, ALL_MAPS[id]]));
 }
 
-// 当前编译目标的可用地图（HUD 菜单、resolveMapId 均只看到本目标集）
-export const MAPS = mapsForTarget(TARGET_SET);
+// 当前图集的可用地图（HUD 菜单、resolveMapId 均只看到本图集）
+export const MAPS = mapsForSet(MAP_SET);
 
-// 新玩家默认地图：离线版沙漠灰；平台版原创赤霞集市（旧存档/URL 无效时也回退到此）
-export const NEW_PLAYER_DEFAULT_MAP = TARGET_SET === 'platform' ? 'platform-desert' : 'desert-grey';
+// 新玩家默认地图：classic 图集默认沙漠灰；original 图集默认赤霞集市（旧存档/URL 无效时也回退到此）
+export const NEW_PLAYER_DEFAULT_MAP = MAP_SET === 'original' ? 'platform-desert' : 'desert-grey';
 
 export function getMapDescriptor(id) { return MAPS[id] || null; }
 
@@ -167,7 +176,7 @@ export function firstAvailableMapId() {
 }
 
 // 解析顺序：URL 参数 > 已存设置 > 新玩家默认 > 第一张可用地图；不可用的地图一律跳过。
-// resolveMapIdIn 为纯函数形态（地图表显式传入），供目标集隔离测试与 resolveMapId 复用。
+// resolveMapIdIn 为纯函数形态（地图表显式传入），供图集隔离测试与 resolveMapId 复用。
 export function resolveMapIdIn(maps, requested, stored, defaultMap) {
   for (const c of [requested, stored, defaultMap]) {
     if (c && maps[c] && maps[c].available) return c;

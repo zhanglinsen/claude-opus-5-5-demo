@@ -1,11 +1,11 @@
-// Task 11 / US-05 聚焦测试：目标选择、三构建隔离、离线无外链、mock 标志、
+// Task 11 / US-05 聚焦测试：目标选择、图集开关、三构建隔离、离线无外链、mock 标志、
 // 平台品牌中立、语言注入与广告暂停恢复。构建产物检查（最后一段）依赖 npm run build 先行。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  mapsForTarget, resolveMapIdIn, MAP_TARGET_SETS, getMapDescriptor,
+  mapsForSet, normalizeMapSet, resolveMapIdIn, MAP_SETS, getMapDescriptor,
 } from '../../src/maps/registry.js';
 import { resolvePlatformConfig, mockMarker, BUILD_TARGETS } from '../../src/platform/config.js';
 
@@ -24,21 +24,29 @@ import { Game } from '../../src/game.js';
 // Game 构造只依赖 location（URL 参数解析）；node 测试环境提供最小替身
 if (!globalThis.location) globalThis.location = { search: '' };
 
-// ---------- 目标选择：地图集按编译目标隔离 ----------
+// ---------- 地图集开关：与编译目标解耦，构建期 __MAP_SET__ 注入 ----------
 
-test('offline 目标只含旧 desert-grey / transport-ship', () => {
-  assert.deepEqual(Object.keys(mapsForTarget('offline')).sort(), ['desert-grey', 'transport-ship']);
+test('classic 图集只含经典运输船 / 沙漠灰（上架试用默认图集）', () => {
+  assert.deepEqual(MAP_SETS.classic, ['transport-ship', 'desert-grey']);
+  assert.deepEqual(Object.keys(mapsForSet('classic')), ['transport-ship', 'desert-grey']);
 });
 
-test('y8 / gamemonetize 目标只用原创平台图集', () => {
-  for (const t of ['y8', 'gamemonetize']) {
-    assert.deepEqual(Object.keys(mapsForTarget(t)).sort(), ['platform-desert', 'platform-harbor']);
+test('original 图集只含原创平台双图', () => {
+  assert.deepEqual(MAP_SETS.original, ['platform-desert', 'platform-harbor']);
+  assert.deepEqual(Object.keys(mapsForSet('original')), ['platform-desert', 'platform-harbor']);
+});
+
+test('normalizeMapSet：未知/缺失图集回退 classic（含 Node 无 __MAP_SET__ 环境）', () => {
+  assert.equal(normalizeMapSet('classic'), 'classic');
+  assert.equal(normalizeMapSet('original'), 'original');
+  for (const bad of [null, undefined, '', 'nonsense', 42]) {
+    assert.equal(normalizeMapSet(bad), 'classic');
   }
 });
 
-test('平台图描述符完整（不能套用旧沙漠灰的 AI/bounds/雷达/报点）', () => {
-  // node 环境默认 offline 目标，平台图取自目标集（mapsForTarget 纯函数）
-  const set = mapsForTarget('y8');
+test('原创平台图描述符完整（不能套用旧沙漠灰的 AI/bounds/雷达/报点）', () => {
+  // node 环境默认 classic 图集，原创图取自图集纯函数 mapsForSet
+  const set = mapsForSet('original');
   const d = set['platform-desert'];
   assert.ok(d && d.available);
   assert.equal(d.name, '赤霞集市');
@@ -58,23 +66,23 @@ test('平台图描述符完整（不能套用旧沙漠灰的 AI/bounds/雷达/�
   for (const desc of [d, h]) {
     assert.ok(!/Global Risk|Black List/.test(desc.menu.blurb), 'blurb 含原作品牌名');
   }
-  assert.equal(getMapDescriptor('platform-desert'), null); // 离线注册表看不到平台图
+  assert.equal(getMapDescriptor('platform-desert'), null); // classic 图集（node 默认）注册表看不到平台图
 });
 
-test('平台目标下 URL ?map= 与旧存档无效时回退平台默认（赤霞集市）', () => {
-  const maps = mapsForTarget('y8');
+test('original 图集下 URL ?map= 与旧存档无效时回退图集默认（赤霞集市）', () => {
+  const maps = mapsForSet('original');
   const def = Object.keys(maps)[0];
   assert.equal(resolveMapIdIn(maps, 'desert-grey', 'desert-grey', def), 'platform-desert'); // 旧图 id 无效
   assert.equal(resolveMapIdIn(maps, 'platform-harbor', null, def), 'platform-harbor'); // 本图集内可选
   assert.equal(resolveMapIdIn(maps, 'nonsense', 'transport-ship', def), 'platform-desert'); // 双无效回默认
-  assert.equal(resolveMapIdIn(mapsForTarget('offline'), 'platform-desert', null, 'desert-grey'), 'desert-grey'); // 离线不可选平台图
+  assert.equal(resolveMapIdIn(mapsForSet('classic'), 'platform-desert', null, 'desert-grey'), 'desert-grey'); // classic 不可选原创图
 });
 
-test('离线目标集保持两图可选且 transport-ship 元数据不变', () => {
-  const maps = mapsForTarget('offline');
+test('classic 图集保持两图可选且 transport-ship 元数据不变', () => {
+  const maps = mapsForSet('classic');
   assert.equal(maps['transport-ship'].available, true);
   assert.equal(maps['desert-grey'].defaultMode, 'bomb');
-  assert.deepEqual(MAP_TARGET_SETS.offline, ['transport-ship', 'desert-grey']);
+  assert.deepEqual(MAP_SETS.classic, ['transport-ship', 'desert-grey']);
 });
 
 // ---------- 平台配置与 mock 标志 ----------
@@ -118,7 +126,8 @@ test('SDK 主机白名单：平台各归各，离线为空', () => {
 
 test('平台覆盖目录不含原作品牌词；双版本菜单使用工作室品牌', () => {
   const branded = withPlatformBranding();
-  // 平台构建中离线图元数据键不可达（MAPS 不含这两张图），品牌扫描只覆盖可达键
+  // 地图内容键（名称/简介）按图集开关刻意保留原名：classic 图集上架试用是项目决策，
+  // 平台审核结果待定；本扫描覆盖的是品牌覆盖层（菜单/阵营/结算等），不含地图内容键。
   const unreachable = (k) => k.startsWith('map.transport-ship.') || k.startsWith('map.desert-grey.');
   for (const loc of ['zh', 'en']) {
     const joined = Object.entries(branded[loc]).filter(([k]) => !unreachable(k)).map(([, v]) => v).join('\n');
@@ -204,6 +213,9 @@ const OFFLINE = 'dist/index.html';
 const Y8 = 'dist/y8/index.html';
 const GM = 'dist/gamemonetize/index.html';
 
+// 每个包在 <head> 内嵌 <meta name="map-set"> 自证图集（产物测试与上架核对都以此为准）
+const mapSetOf = (html) => html.match(/<meta name="map-set" content="(.*?)"/)?.[1];
+
 test('三目标产物齐备且目标隔离（官方 SDK 地址只进对应包）', () => {
   for (const f of [OFFLINE, Y8, GM]) {
     assert.ok(fs.existsSync(f), `缺少构建产物 ${f}（先运行 npm run build）`);
@@ -211,6 +223,9 @@ test('三目标产物齐备且目标隔离（官方 SDK 地址只进对应包）
   const offline = fs.readFileSync(OFFLINE, 'utf8');
   const y8 = fs.readFileSync(Y8, 'utf8');
   const gm = fs.readFileSync(GM, 'utf8');
+  // map-set 标记：三目标同次构建必须一致且合法
+  assert.deepEqual([mapSetOf(offline), mapSetOf(y8), mapSetOf(gm)], [mapSetOf(offline), mapSetOf(offline), mapSetOf(offline)]);
+  assert.ok(['classic', 'original'].includes(mapSetOf(offline)), `map-set 标记非法：${mapSetOf(offline)}`);
   assert.ok(!offline.includes(SDK_HOSTS.y8[0]) && !offline.includes(SDK_HOSTS.gamemonetize[0]), '离线包含平台 SDK 地址');
   assert.ok(!offline.includes('Y8PlatformAdapter') && !offline.includes('GameMonetizePlatformAdapter'), '离线包含平台适配器代码');
   assert.ok(y8.includes(SDK_HOSTS.y8[0]), 'Y8 包应只含 Y8 SDK');
@@ -230,7 +245,7 @@ test('离线版可 file:// 直开：无外部资源加载（锚点链接不算�
   }
 });
 
-test('平台包公开页面标题/描述为原创中性文案', () => {
+test('平台包公开页面元数据按图集取文案，任何图集不含原作品牌词', () => {
   const y8 = fs.readFileSync(Y8, 'utf8');
   const gm = fs.readFileSync(GM, 'utf8');
   const meta = (html) => {
@@ -238,9 +253,14 @@ test('平台包公开页面标题/描述为原创中性文案', () => {
     const desc = html.match(/<meta name="description" content="(.*?)"/s)[1];
     return `${title}\n${desc}`;
   };
+  const set = mapSetOf(y8);
   for (const html of [meta(y8), meta(gm)]) {
     assert.ok(!/穿越火线|沙漠灰|运输船|CROSSFIRE|CrossFire/i.test(html), `平台页面元数据含原作品牌词：${html}`);
-    assert.ok(html.includes('Chixia Bazaar') && html.includes('Fog Harbor Quay'));
+    if (set === 'classic') {
+      assert.ok(html.includes('Desert Grey') && html.includes('Transport Ship'), `classic 平台元数据应描述经典双图：${html}`);
+    } else {
+      assert.ok(html.includes('Chixia Bazaar') && html.includes('Fog Harbor Quay'), `original 平台元数据应描述原创双图：${html}`);
+    }
   }
 });
 
@@ -252,21 +272,21 @@ test('三个构建的 favicon 使用对应语言的透明工作室原图', () =>
   for (const file of [Y8, GM]) assert.equal(icon(fs.readFileSync(file, 'utf8')), en);
 });
 
-test('静态大厅预览图按目标隔离，平台包不含经典地图预览', () => {
-  const previews = {
-    offline: ['desert-grey', 'transport-ship'],
-    y8: ['platform-desert', 'platform-harbor'],
-    gamemonetize: ['platform-desert', 'platform-harbor'],
+test('大厅预览图按包内图集注入，另一图集的预览不混入', () => {
+  const PREVIEWS_BY_SET = {
+    classic: ['transport-ship', 'desert-grey'],
+    original: ['platform-desert', 'platform-harbor'],
   };
   const files = { offline: OFFLINE, y8: Y8, gamemonetize: GM };
   for (const [target, file] of Object.entries(files)) {
     const html = fs.readFileSync(file, 'utf8');
-    for (const id of previews[target]) {
+    const set = mapSetOf(html);
+    for (const id of PREVIEWS_BY_SET[set]) {
       const encoded = fs.readFileSync(`src/assets/menu/${id}.jpg`).toString('base64');
       assert.ok(html.includes(`.lobby[data-map="${id}"]{--arena-image:url(data:image/jpeg;base64,${encoded})}`), `${target} 缺 ${id} 预览`);
     }
-    for (const other of Object.keys(previews).filter((x) => x !== target && (x === 'offline' || target === 'offline'))) {
-      for (const id of previews[other]) assert.ok(!html.includes(`.lobby[data-map="${id}"]`), `${target} 混入 ${id}`);
+    for (const other of Object.keys(PREVIEWS_BY_SET).filter((s) => s !== set)) {
+      for (const id of PREVIEWS_BY_SET[other]) assert.ok(!html.includes(`.lobby[data-map="${id}"]`), `${target} 混入 ${id}`);
     }
   }
 });

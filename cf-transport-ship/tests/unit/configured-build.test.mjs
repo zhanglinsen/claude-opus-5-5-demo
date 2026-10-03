@@ -1,6 +1,6 @@
 // 正式平台 ID 配置构建（npm run build:configured）聚焦测试：
 // 配置层校验（缺失/空 ID 构建期明确失败）、configured 双包产物路径、ID 内联与隔离、
-// manifest 如实标记（mock=false、审核未完成、不可提交）、ZIP 根目录 index.html、
+// manifest 如实标记（mock=false、审核未完成、允许平台试用上传）、ZIP 根目录 index.html、
 // 默认三构建 mock 包不被覆盖。构建产物段（后半）依赖先运行：
 //   npm run build && node build.mjs --configured
 import { test } from 'node:test';
@@ -121,7 +121,7 @@ test('ID 内联在主脚本之前，且各包只含自己目标的 ID（y8 双 I
   assert.ok(!gm.includes(REAL.y8App) && !gm.includes(REAL.y8Game), 'GM 包不得含 Y8 ID');
 });
 
-test('configured manifest/README 如实标记：mock=false、ID 已配置、审核未完成、不可提交（含经典图数据原因）', () => {
+test('configured manifest/README 如实标记：mock=false、ID 已配置、审核未完成、允许平台试用上传', () => {
   for (const [zipPath, target] of [
     ['dist/configured/y8/y8-package.zip', 'y8'],
     ['dist/configured/gamemonetize/gamemonetize-package.zip', 'gamemonetize'],
@@ -132,14 +132,18 @@ test('configured manifest/README 如实标记：mock=false、ID 已配置、审�
     assert.equal(manifest.target, target);
     assert.equal(manifest.mock, false);
     assert.equal(manifest.idsConfigured, true);
-    assert.equal(manifest.submissionAllowed, false);
+    assert.equal(manifest.trialUploadAllowed, true);
+    assert.equal(manifest.releaseVerificationPending, true);
+    assert.equal(manifest.platformReview, 'pending');
     assert.equal(manifest.adsVerified, false);
     const blockers = (manifest.blockers || []).join('\n');
     assert.match(blockers, /review/i, 'manifest 应写明平台审核未完成');
-    assert.match(blockers, /classic map/i, 'manifest 应写明仍内嵌未开放经典地图数据');
+    assert.ok(!/do not submit.*publicly|non-released classic|asset removal/i.test(blockers));
     const readme = entries.get('README.md');
     assert.match(readme, /mock = false/i);
-    assert.match(readme, /NOT for public submission/i);
+    assert.match(readme, /platform trial upload allowed/i);
+    assert.match(readme, /release verification pending/i);
+    assert.ok(!/NOT for public submission|non-released classic|asset removal/i.test(readme));
     assert.match(readme, /natural breakpoints/i, 'README 应写明广告只在自然断点请求');
   }
   // manifest 携带的 ID 与目标一致：y8 双 ID / GM 单 ID

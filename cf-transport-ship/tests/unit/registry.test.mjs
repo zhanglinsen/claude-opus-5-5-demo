@@ -1,7 +1,20 @@
 // 地图注册表单元测试（node --test）
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAPS, getMapDescriptor, resolveMapId, firstAvailableMapId, inSpawnZone } from '../../src/maps/registry.js';
+import {
+  MAPS, MAP_SET, MAP_SETS, mapsForSet, normalizeMapSet,
+  getMapDescriptor, resolveMapId, firstAvailableMapId, inSpawnZone,
+} from '../../src/maps/registry.js';
+
+test('地图集开关：node 默认 classic，目录与未知回退正确', () => {
+  // node 测试环境无 __MAP_SET__ define → 默认 classic（经典复刻，上架试用默认图集）
+  assert.equal(MAP_SET, 'classic');
+  assert.deepEqual(Object.keys(MAP_SETS), ['classic', 'original']);
+  assert.deepEqual(Object.keys(mapsForSet('original')), ['platform-desert', 'platform-harbor']);
+  assert.equal(normalizeMapSet('original'), 'original');
+  assert.equal(normalizeMapSet('classic'), 'classic');
+  for (const bad of [null, undefined, '', 'nonsense']) assert.equal(normalizeMapSet(bad), 'classic');
+});
 
 test('注册表包含运输船与沙漠灰（阶段 2 起均可用）', () => {
   assert.equal(MAPS['transport-ship'].available, true);

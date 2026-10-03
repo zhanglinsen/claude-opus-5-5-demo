@@ -197,10 +197,16 @@ const run = async () => {
     ok('[y8] mock 明示标记（window.__PLATFORM_MOCK__ + data-platform-mock）', mi.winMarker?.mock === true && mi.htmlMock === 'true', JSON.stringify(mi));
     ok('[y8] mock 目标为 y8、无真实 ID', mi.winMarker?.target === 'y8' && typeof mi.winMarker?.ids?.appId === 'string' && mi.winMarker.ids.appId.startsWith('mock-'), JSON.stringify(mi.winMarker?.ids ?? null));
     const maps = await page.evaluate(() => ({
+      set: document.querySelector('meta[name="map-set"]')?.content || null,
       seg: [...document.querySelectorAll('#mapSeg button')].map((b) => ({ v: b.dataset.v, disabled: b.disabled })),
     }));
-    ok('[y8] 地图菜单仅平台原创双图', maps.seg.some((b) => b.v === 'platform-desert' && !b.disabled) && maps.seg.some((b) => b.v === 'platform-harbor' && !b.disabled) &&
-      !maps.seg.some((b) => (b.v === 'transport-ship' || b.v === 'desert-grey') && !b.disabled), JSON.stringify(maps.seg));
+    // 期望地图集按包内 <meta name="map-set"> 推导（classic：运输船/沙漠灰；original：赤霞集市/雾港码头）
+    const SET_MAPS = { classic: ['transport-ship', 'desert-grey'], original: ['platform-desert', 'platform-harbor'] };
+    const setMaps = SET_MAPS[maps.set] || null;
+    const [setMapA, setMapB] = setMaps || SET_MAPS.classic;
+    ok('[y8] 图集元数据合法', !!setMaps, `map-set=${maps.set}`);
+    ok('[y8] 地图菜单仅图集内双图', maps.seg.some((b) => b.v === setMapA && !b.disabled) && maps.seg.some((b) => b.v === setMapB && !b.disabled) &&
+      maps.seg.every((b) => setMaps.includes(b.v)), JSON.stringify(maps.seg));
     ok('[y8] 无未处理控制台错误', page.__accept.consoleErrors.length === 0, page.__accept.consoleErrors.join(' | '));
     ok('[y8] 平台 mock 不加载真实 SDK / 无外部请求', page.__accept.external.length === 0, page.__accept.external.join(' | '));
     await shot(page, 'y8-menu-en');
@@ -226,14 +232,14 @@ const run = async () => {
     ok('[y8] 浏览器 zh-CN + mock 无平台语言 → 中文', (uiZh.docLang || '').startsWith('zh'), `docLang=${uiZh.docLang}`);
     await ctxY8Zh.close();
 
-    // 平台沙漠图：触屏中文 + 短程实走 + 截图
-    let p2 = await newPage(ctxY8, `${y8Url}?map=platform-desert&nolock=1&touch=1&autostart=1`, 'y8-desert-zh');
+    // 图集默认图：触屏中文 + 短程实走 + 截图
+    let p2 = await newPage(ctxY8, `${y8Url}?map=${setMapA}&nolock=1&touch=1&autostart=1`, 'y8-setA-zh');
     await waitPlaying(p2);
     const touchZh = await p2.evaluate(() => [...document.querySelectorAll('#touch .btn')].map((b) => b.textContent));
     ok('[y8] 触屏控件随语言即时本地化（中文 开火）', touchZh.includes('开火'), touchZh.join(','));
     const walk1 = await walkSmoke(p2, 2000);
-    ok('[y8] 平台沙漠图短程实走：位移>3 且未越界未坠落、保持存活', walk1.d > 3 && walk1.inBounds && walk1.alive && Math.abs(walk1.dy) < 12, JSON.stringify(walk1));
-    await shot(p2, 'y8-platform-desert-zh');
+    ok(`[y8] 图集默认图（${setMapA}）短程实走：位移>3 且未越界未坠落、保持存活`, walk1.d > 3 && walk1.inBounds && walk1.alive && Math.abs(walk1.dy) < 12, JSON.stringify(walk1));
+    await shot(p2, `y8-${setMapA}-zh`);
 
     // 暂停菜单切英文：触屏/HUD 即时更新，恢复后截图。
     // nolock/touch 页无 pointer lock，Esc 暂停不可达（暂停由锁丢失触发）——经游戏 API 打开暂停（setup 驱动），
@@ -247,19 +253,19 @@ const run = async () => {
     ok('[y8] 对局中切英文：触屏按钮即时更新（FIRE）', touchEn.includes('FIRE') && (ui.docLang || '').startsWith('en'), touchEn.join(','));
     await p2.click('#btnResume');
     await p2.waitForTimeout(1200);
-    await shot(p2, 'y8-platform-desert-en');
-    ok('[y8] 平台沙漠图无控制台错误/外部请求', p2.__accept.consoleErrors.length === 0 && p2.__accept.external.length === 0,
+    await shot(p2, `y8-${setMapA}-en`);
+    ok('[y8] 图集默认图无控制台错误/外部请求', p2.__accept.consoleErrors.length === 0 && p2.__accept.external.length === 0,
       [...p2.__accept.consoleErrors, ...p2.__accept.external].join(' | '));
     await p2.close();
 
-    // 平台港口图：出生点视角截图（英文），实走冒烟移到截图后；另开一页取中文出生点视角
-    p2 = await newPage(ctxY8, `${y8Url}?map=platform-harbor&nolock=1&autostart=1`, 'y8-harbor');
+    // 图集第二张图：出生点视角截图（英文），实走冒烟移到截图后；另开一页取中文出生点视角
+    p2 = await newPage(ctxY8, `${y8Url}?map=${setMapB}&nolock=1&autostart=1`, 'y8-setB');
     await waitPlaying(p2);
-    await shot(p2, 'y8-platform-harbor-en');
+    await shot(p2, `y8-${setMapB}-en`);
     const walk2 = await walkSmoke(p2, 2000);
-    ok('[y8] 平台港口图短程实走：位移>3 且未越界未坠落、保持存活', walk2.d > 3 && walk2.inBounds && walk2.alive && Math.abs(walk2.dy) < 12, JSON.stringify(walk2));
+    ok(`[y8] 图集第二图（${setMapB}）短程实走：位移>3 且未越界未坠落、保持存活`, walk2.d > 3 && walk2.inBounds && walk2.alive && Math.abs(walk2.dy) < 12, JSON.stringify(walk2));
     await p2.close();
-    p2 = await newPage(ctxY8, `${y8Url}?map=platform-harbor&nolock=1&autostart=1`, 'y8-harbor-zh');
+    p2 = await newPage(ctxY8, `${y8Url}?map=${setMapB}&nolock=1&autostart=1`, 'y8-setB-zh');
     await waitPlaying(p2);
     await p2.evaluate(() => window.__game.pause());
     await p2.waitForSelector('#pause:not(.hidden)', { timeout: 60000 });
@@ -267,7 +273,7 @@ const run = async () => {
     await p2.waitForTimeout(400);
     await p2.click('#btnResume');
     await p2.waitForTimeout(1200);
-    await shot(p2, 'y8-platform-harbor-zh');
+    await shot(p2, `y8-${setMapB}-zh`);
     await p2.close();
     await ctxY8.close();
 
