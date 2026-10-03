@@ -160,8 +160,12 @@ export class ViewModel {
     const hip = HIP[id] || HIP.ak47;
     // 弹簧：后坐
     const k1 = 260, d1 = 26;
-    this.kickV += (-k1 * this.kick - d1 * this.kickV) * dt; this.kick += this.kickV * dt;
-    this.kickRotV += (-k1 * this.kickRot - d1 * this.kickRotV) * dt; this.kickRot += this.kickRotV * dt;
+    // 低帧率时细分后坐积分，完整推进 dt，避免弹簧数值发散。
+    const steps = Math.max(1, Math.ceil(dt * 60)), step = dt / steps;
+    for (let i = 0; i < steps; i++) {
+      this.kickV += (-k1 * this.kick - d1 * this.kickV) * step; this.kick += this.kickV * step;
+      this.kickRotV += (-k1 * this.kickRot - d1 * this.kickRotV) * step; this.kickRot += this.kickRotV * step;
+    }
     // 鼠标惯性摆动
     const tx = THREE.MathUtils.clamp(-st.lookDX * 0.00055, -0.05, 0.05), ty = THREE.MathUtils.clamp(st.lookDY * 0.00055, -0.04, 0.04);
     this.sway.x += (tx - this.sway.x) * Math.min(1, dt * 9);
