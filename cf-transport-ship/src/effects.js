@@ -223,11 +223,18 @@ export class Effects {
     const speed = 380;
     this.tracers = this.tracers.filter((tr) => {
       tr.t += dt;
-      const head = Math.min(tr.len, tr.t * speed), tail = Math.max(0, head - 7);
+      const head = Math.min(tr.len, tr.t * speed), tail = Math.max(0, tr.t * speed - 7);
       if (tail >= tr.len) return false;
       const mid = pv.copy(tr.from).addScaledVector(tr.dir, (head + tail) / 2);
       const toCam = camPos.clone().sub(mid).normalize();
-      const up = new THREE.Vector3().crossVectors(tr.dir, toCam).normalize();
+      const up = new THREE.Vector3().crossVectors(toCam, tr.dir);
+      if (up.lengthSq() < 1e-12) {
+        // 共线视角下选择不平行的参考轴，避免面片基底退化。
+        if (Math.abs(tr.dir.y) < 0.999) up.set(0, 1, 0);
+        else up.set(1, 0, 0);
+        up.cross(tr.dir);
+      }
+      up.normalize();
       const nrm = new THREE.Vector3().crossVectors(tr.dir, up);
       const basis = new THREE.Matrix4().makeBasis(tr.dir, up, nrm);
       q.setFromRotationMatrix(basis);

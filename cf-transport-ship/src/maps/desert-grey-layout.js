@@ -109,9 +109,10 @@ W(-26, -20, 1.8, 2.2, 2.6, 4, { role: 'wall', m: 'plaster', id: 'bWinRail' });  
 
 // ================== 中路 ==================
 W(5.8, 6.2, -15, 8, 0, 4.2, { role: 'wall', m: 'plaster', id: 'midWallE' });        // 东墙（A小道楼梯开口 z[-19,-15]）
-// 中门：墙体留 1.4m 中缝，双木门板封闭两侧
-W(-6, -0.7, -24.2, -23.8, 0, 4.2, { role: 'wall', m: 'plaster', id: 'midDoorWallL' });
-W(0.7, 6, -24.2, -23.8, 0, 4.2, { role: 'wall', m: 'plaster', id: 'midDoorWallR' });
+// 中门：墙体留 1.4m 中缝，双木门板封闭两侧；侧墙只到门扇外沿（x±2.7）作混凝土门框，
+// 门扇孔径 x[-2.7,-0.7]/[0.7,2.7] y[0,2.6] 不得被混凝土覆盖（否则射向木门的子弹先撞墙）
+W(-6, -2.7, -24.2, -23.8, 0, 4.2, { role: 'wall', m: 'plaster', id: 'midDoorWallL' });
+W(2.7, 6, -24.2, -23.8, 0, 4.2, { role: 'wall', m: 'plaster', id: 'midDoorWallR' });
 W(-2.7, 2.7, -24.2, -23.8, 2.6, 4.2, { role: 'wall', m: 'plaster', id: 'midDoorLintel' });
 S(-1.7, 1.3, -24, 2, 2.6, 0.3, { role: 'door', m: 'woodDoor', mat: 'wood', bullet: 'pen', surface: 'wood', id: 'midDoorL' });
 S(1.7, 1.3, -24, 2, 2.6, 0.3, { role: 'door', m: 'woodDoor', mat: 'wood', bullet: 'pen', surface: 'wood', id: 'midDoorR' });
