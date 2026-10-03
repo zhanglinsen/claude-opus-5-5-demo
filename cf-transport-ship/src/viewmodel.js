@@ -105,7 +105,9 @@ export class ViewModel {
       g.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
       this.guns[id] = g;
     }
-    if (this.cur) this.holder.remove(this.cur);
+    // 切枪前必须先把旧枪动画部件复位：缓存枪被再次装备时会重新采集静止姿态，
+    // 若带着装弹/拉栓动画中的位移离场，被扰动的位姿会被固化成新的 partRest。
+    if (this.cur) { this.resetParts(); this.holder.remove(this.cur); }
     this.cur = this.guns[id]; this.id = id;
     this.holder.add(this.cur);
     this.cur.visible = true;
@@ -117,6 +119,7 @@ export class ViewModel {
     if (mz) { mz.add(this.flash); }
     this.drawT = 0; this.drawDur = drawTime || 0.5;
     this.anim = null;
+    this.slideT = 0; // 上一次开火的滑套瞬态不得在新拔出的枪上重放
     this.kick = this.kickV = this.kickRot = this.kickRotV = 0;
   }
   fire() {
