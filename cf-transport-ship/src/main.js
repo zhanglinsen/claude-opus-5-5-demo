@@ -1,5 +1,6 @@
 // 主控入口（Task 11 / US-05）：语言 → 平台适配器 → 游戏，同一 LocaleService 实例贯通
-// 菜单/HUD、触屏控件与战斗报点；平台广告只在自然断点（match-end / menu-return）请求。
+// 菜单/HUD、触屏控件与战斗报点；平台广告只在自然断点（match-end / menu-return）请求，
+// 另有 GM 平台包加载完成后的首个插屏（game-load，平台审核要求，仅此目标接线）。
 // 编译目标由 build.mjs 以 esbuild define 注入 __BUILD_TARGET__：
 //   offline       离线版（默认）：OfflinePlatformAdapter，无平台 SDK、无运行时外部请求
 //   y8            仅此目标创建 Y8PlatformAdapter（只加载 Y8 官方脚本）
@@ -67,7 +68,10 @@ import { createPlatformLocaleBridge } from './platform/locale-bridge.js';
   let game = null;
   const platform = installPlatform({
     adapter,
-    breaks: ['match-end', 'menu-return'], // 本游戏自然断点：整场结束 / 返回菜单
+    // GM 审核要求"加载后首个广告"：仅 GM 目标放开 game-load 断点，其余目标维持两点不变
+    breaks: __BUILD_TARGET__ === 'gamemonetize'
+      ? ['match-end', 'menu-return', 'game-load']
+      : ['match-end', 'menu-return'],
     controls: {
       isUserPaused: () => (game ? game.isUserPaused() : false),
       enterAdPause: () => game && game.enterAdPause(),
@@ -81,13 +85,24 @@ import { createPlatformLocaleBridge } from './platform/locale-bridge.js';
   game.locale = locale;              // 触屏控件构造时自动接同一实例（touch.js 接线路径 1）
   game.setLocaleService(locale);     // 战斗报点/报点区域/结算文案即时取词（必须在 init 前）
   game.platform = platform;          // 自然断点广告请求经 game.requestPlatformAd()
+  let initOk = false;
   try {
     await game.init();
+    initOk = true;
   } catch (e) {
     console.error(e);
     const el = document.getElementById('loadTxt');
     const msg = e && e.message ? e.message : String(e);
     if (el) el.textContent = locale.t('load.fail', { msg });
+  }
+
+  // GM 平台审核（2026-10-20 测试官反馈）：首个广告应在游戏加载后立即展示——
+  // SDK 就绪即请求一次 game-load 插屏；无填充/失败静默收口，不重试、不阻塞游戏，
+  // 之后的广告仍只在自然断点请求。Y8/离线目标不接此断点，行为不变。
+  if (__BUILD_TARGET__ === 'gamemonetize' && !config.mock && initOk) {
+    platform.ready.then((ok) => {
+      if (ok && !platform.destroyed) game.requestPlatformAd('game-load');
+    });
   }
 
   // mock 标记（可验证）：无正式 ID 的包明确自报 mock，不对外声称可提交

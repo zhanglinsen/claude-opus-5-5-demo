@@ -1,6 +1,8 @@
 // build:configured 轻量浏览器验证（SDK 脚本路由替身，无真实网络、无截图、headless）：
 // 确认配置包真的走非 mock 适配器路径——Y8 init 收到正确 appId/gameId、GM 的
-// window.SDK_OPTIONS 收到正确 gameId；加载期不自动请求广告（showAd/showBanner 计数为 0）。
+// window.SDK_OPTIONS 收到正确 gameId；平台包不渲染站外链接（Y8 审核 2026-10-19）；
+// GM 加载完成后请求恰好一次首个插屏（GM 审核 2026-10-20 "Ads should be shown the
+// first time after the game loads"），Y8 仍保持加载期零广告（自然断点请求不变）。
 // 官方 SDK 地址被路由拦截并以本地替身脚本应答（Y8: y8.sdk()/y8sdk.ready 语义；
 // GM: SDK_OPTIONS.onEvent SDK_READY 语义），替身只记录调用，不模拟广告内容。
 // 用法：node scripts/accept-configured-browser.mjs [--out artifacts/configured-platform]
@@ -100,6 +102,8 @@ async function sample(page) {
       y8ShowAds: window.__Y8_SHOWAD_CALLS__ ?? null,
       gmOptionsSeen: window.__GM_OPTIONS_SEEN__ ?? null,
       gmShowBanner: window.__GM_SHOWBANNER_CALLS__ ?? null,
+      menuLinks: document.querySelector('.mlinks') !== null,
+      htmlHasGithub: /github\.com/i.test(document.documentElement.innerHTML),
     };
   });
 }
@@ -114,7 +118,7 @@ const run = async () => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 
     // ============ Y8 配置包 ============
-    console.log('A. Y8 配置包：非 mock 适配器路径 + init 收到正确双 ID + 加载期无广告');
+    console.log('A. Y8 配置包：非 mock 适配器路径 + init 收到正确双 ID + 加载期无广告 + 无站外链接');
     const y8Route = 'https://cdn.y8.com/minimal-sdk/2-0/y8.min.js';
     let y8p = await newPage(ctx, `http://127.0.0.1:${PORT}/configured/y8/index.html?nolock=1`, 'y8-configured', [[y8Route, Y8_STUB]]);
     await waitMenu(y8p.page);
@@ -124,22 +128,27 @@ const run = async () => {
     ok('[y8] 平台适配器 init 成功就绪', s.platformReady === true, `ready=${JSON.stringify(s.platformReady)}`);
     ok('[y8] sdk.init 收到正确 App ID', s.y8Init?.appConfig?.appId === REAL.y8App, JSON.stringify(s.y8Init?.appConfig ?? null));
     ok('[y8] sdk.init 收到正确 Game ID（adConfig.gameId）', s.y8Init?.adConfig?.gameId === REAL.y8Game, JSON.stringify(s.y8Init?.adConfig ?? null));
-    ok('[y8] 加载期未自动请求广告（showAd 调用数=0）', s.y8ShowAds === 0, `showAds=${s.y8ShowAds}`);
+    ok('[y8] 加载期未自动请求广告（showAd 调用数=0，Y8 维持自然断点请求）', s.y8ShowAds === 0, `showAds=${s.y8ShowAds}`);
+    ok('[y8] 平台包不渲染站外链接（Y8 审核：移除全部外站链接）', !s.menuLinks && !s.htmlHasGithub, `mlinks=${s.menuLinks} github=${s.htmlHasGithub}`);
     ok('[y8] 无未处理控制台错误', y8p.log.consoleErrors.length === 0, y8p.log.consoleErrors.join(' | '));
     ok('[y8] 外部请求仅为被替身拦截的官方 SDK 脚本', y8p.log.external.length === 1 && y8p.log.external[0] === y8Route, JSON.stringify(y8p.log.external));
     await y8p.page.close();
 
     // ============ GameMonetize 配置包 ============
-    console.log('B. GameMonetize 配置包：非 mock 适配器路径 + SDK_OPTIONS 收到正确 gameId + 加载期无广告');
+    console.log('B. GameMonetize 配置包：非 mock 适配器路径 + 正确 gameId + 加载后恰好一次首个插屏 + 无站外链接');
     const gmRoute = 'https://api.gamemonetize.com/sdk.js';
     const gmp = await newPage(ctx, `http://127.0.0.1:${PORT}/configured/gamemonetize/index.html?nolock=1`, 'gm-configured', [[gmRoute, GM_STUB]]);
     await waitMenu(gmp.page);
+    // game-load 首广告在 init 完成 + SDK 就绪后请求；替身同步发 SDK_READY，等 showBanner 出现
+    await gmp.page.waitForFunction(() => (window.__GM_SHOWBANNER_CALLS__ ?? 0) >= 1, null, { timeout: 30000 });
     s = await sample(gmp.page);
     ok('[gm] 走非 mock 适配器路径（adapterId=gamemonetize，非 offline）', s.adapterId === 'gamemonetize', `adapterId=${s.adapterId}`);
     ok('[gm] 无 mock 标记', !s.mockMarker && !s.htmlMock, JSON.stringify({ mockMarker: s.mockMarker, htmlMock: s.htmlMock }));
     ok('[gm] SDK_READY 后适配器就绪', s.platformReady === true && s.gmAdapterReady === true, `ready=${JSON.stringify(s.platformReady)} adapterReady=${s.gmAdapterReady}`);
     ok('[gm] window.SDK_OPTIONS 收到正确 gameId', s.gmOptionsSeen?.gameId === REAL.gmGame, JSON.stringify(s.gmOptionsSeen));
-    ok('[gm] 加载期未自动请求广告（showBanner 调用数=0）', s.gmShowBanner === 0, `showBanner=${s.gmShowBanner}`);
+    ok('[gm] 加载完成后请求首个插屏（GM 审核：Ads should be shown the first time after the game loads）', s.gmShowBanner >= 1, `showBanner=${s.gmShowBanner}`);
+    ok('[gm] 首广告只请求一次（后续仍走自然断点）', s.gmShowBanner === 1, `showBanner=${s.gmShowBanner}`);
+    ok('[gm] 平台包不渲染站外链接', !s.menuLinks && !s.htmlHasGithub, `mlinks=${s.menuLinks} github=${s.htmlHasGithub}`);
     ok('[gm] 无未处理控制台错误', gmp.log.consoleErrors.length === 0, gmp.log.consoleErrors.join(' | '));
     ok('[gm] 外部请求仅为被替身拦截的官方 SDK 脚本', gmp.log.external.length === 1 && gmp.log.external[0] === gmRoute, JSON.stringify(gmp.log.external));
     await gmp.page.close();

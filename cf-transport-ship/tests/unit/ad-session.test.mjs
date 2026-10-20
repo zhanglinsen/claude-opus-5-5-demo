@@ -39,6 +39,20 @@ test('完整播放周期：只有实际开始才暂停模拟与临时静音，�
     [PLATFORM_EVENTS.AD_REQUEST, PLATFORM_EVENTS.AD_START, PLATFORM_EVENTS.AD_COMPLETE]);
 });
 
+test('game-load 断点：默认策略接受（GM 审核要求加载后首个广告），流程与自然断点一致', async () => {
+  const ctrl = makeControls();
+  const requested = [];
+  const session = new AdSession({
+    requestAd: async (breakpoint) => { requested.push(breakpoint); return AD_STATUS.NO_FILL; },
+    controls: ctrl.api,
+  });
+  const result = await session.request(AD_BREAKS.GAME_LOAD);
+  assert.equal(result.status, AD_STATUS.NO_FILL); // 无填充：不暂停、不静音
+  assert.deepEqual(requested, ['game-load']);
+  assert.equal(ctrl.simPaused, false);
+  assert.equal(ctrl.s.muted, false);
+});
+
 test('无填充：不暂停、不静音，直接收口', async () => {
   const ctrl = makeControls();
   const events = [];

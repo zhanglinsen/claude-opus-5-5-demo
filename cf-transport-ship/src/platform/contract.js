@@ -27,11 +27,14 @@
  * 本模块不引用 game.js：游戏暂停与音频一律经 AdSession 的 controls 依赖注入。
  */
 
-// 默认自然断点（本游戏 US-03）：广告只允许在整场比赛结束或返回菜单时请求。
+// 默认自然断点（本游戏 US-03）：广告只允许在整场比赛结束、返回菜单或加载完成时请求。
 // 断点集是默认配置而非硬编码：其他游戏经 breaks 配置注入自己的自然断点（F1）。
+// game-load：GameMonetize 审核（2026-10-20 测试官反馈）要求"广告应在游戏加载后首次展示"，
+// 仅由平台包的启动路径按需请求；Y8 等其他平台不请求此断点则行为不变。
 export const AD_BREAKS = Object.freeze({
   MATCH_END: 'match-end',
   MENU_RETURN: 'menu-return',
+  GAME_LOAD: 'game-load',
 });
 
 // requestAd 的 resolve 约定与 AdSession.request() 的最终结果状态。
@@ -102,9 +105,9 @@ export function createBreakPolicy(breaks) {
   return (v) => typeof v === 'string' && set.has(v);
 }
 
-/** 是否合法自然断点（默认两点）：非法断点必须直接拒绝，不得触发平台广告调用。 */
+/** 是否合法自然断点（默认三点）：非法断点必须直接拒绝，不得触发平台广告调用。 */
 export function isAdBreak(v) {
-  return v === AD_BREAKS.MATCH_END || v === AD_BREAKS.MENU_RETURN;
+  return v === AD_BREAKS.MATCH_END || v === AD_BREAKS.MENU_RETURN || v === AD_BREAKS.GAME_LOAD;
 }
 
 /** 最小事件总线：处理器异常互相隔离（平台回调质量不可控，单个坏处理器不得中断生命周期）。 */

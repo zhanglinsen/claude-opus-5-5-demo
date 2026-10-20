@@ -245,6 +245,21 @@ test('离线版可 file:// 直开：无外部资源加载（锚点链接不算�
   }
 });
 
+test('平台包不渲染站外链接（Y8 审核 2026-10-19：移除全部外站链接）', () => {
+  // 平台宿主内不容许指向外部网站的链接：菜单文字链（.mlinks）与 HUD 图标链（#clinks）
+  // 都按构建目标剔除；CSS 类选择器与 i18n 词条字符串不是链接，允许保留。
+  for (const [file, html] of [[Y8, fs.readFileSync(Y8, 'utf8')], [GM, fs.readFileSync(GM, 'utf8')]]) {
+    assert.ok(!html.includes('<div class="mlinks"') && !html.includes('<div id="clinks"'), `${file} 仍含菜单外链容器`);
+    for (const m of html.matchAll(/<a\b[^>]*?\bhref="([^"]*)"/gi)) {
+      assert.ok(!/^https?:/i.test(m[1]), `${file} 含站外链接 ${m[1]}`);
+    }
+    assert.ok(!/github\.com/i.test(html), `${file} 含 github 站外链接`);
+    assert.ok(!/href="https:\/\/x\.com/i.test(html), `${file} 含 X 站外链接`);
+  }
+  const offline = fs.readFileSync(OFFLINE, 'utf8');
+  assert.ok(offline.includes('<div class="mlinks"') && offline.includes('<div id="clinks"'), '离线包应保留菜单外链');
+});
+
 test('平台包公开页面元数据按图集取文案，任何图集不含原作品牌词', () => {
   const y8 = fs.readFileSync(Y8, 'utf8');
   const gm = fs.readFileSync(GM, 'utf8');

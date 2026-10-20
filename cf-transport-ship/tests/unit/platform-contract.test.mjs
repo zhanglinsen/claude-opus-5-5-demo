@@ -23,9 +23,10 @@ test('normalizeLanguage：平台语言归一化与安全回退', () => {
   assert.equal(normalizeLanguage('not a lang!'), 'en');
 });
 
-test('isAdBreak：仅整场结束与返回菜单是合法自然断点', () => {
+test('isAdBreak：整场结束、返回菜单与加载完成是合法自然断点', () => {
   assert.equal(isAdBreak(AD_BREAKS.MATCH_END), true);
   assert.equal(isAdBreak(AD_BREAKS.MENU_RETURN), true);
+  assert.equal(isAdBreak(AD_BREAKS.GAME_LOAD), true);
   assert.equal(isAdBreak('combat'), false);
   assert.equal(isAdBreak('page-load'), false);
   assert.equal(isAdBreak(undefined), false);
